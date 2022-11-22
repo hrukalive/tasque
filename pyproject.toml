@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.pyright]
+include = ["src/tasque"]
+exclude = ["**/__pycache__",]
+
+reportMissingImports = true
+reportMissingTypeStubs = false
+
+pythonVersion = "3.9"
+pythonPlatform = "Linux"
+
+typeCheckingMode = "basic"
+useLibraryCodeForTypes = true
+reportGeneralTypeIssues = "warning"
+reportUnboundVariable = "error"

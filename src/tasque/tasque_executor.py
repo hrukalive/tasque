@@ -1,6 +1,7 @@
 import threading
 import concurrent.futures
 import networkx as nx
+import time
 # import matplotlib.pyplot as plt
 
 from tasque.tasque_task import TasqueTaskStatus, TasqueTaskParamKind
@@ -139,19 +140,24 @@ class TasqueExecutor(object):
         return self.tasks[tid].get_result()
 
     def get_status(self, tid):
-        return self.tasks[tid].status
+        return self.tasks[tid].status, self.tasks[tid].status_data
 
     def task_started(self, tid):
         if tid not in self.groups[self.tasks[tid].group]['acquired']:
             raise Exception("Task {} not in the clear to run.".format(tid))
         else:
             self.running_tasks.add(tid)
+            self.tasks[tid].status_data['start_time'] = time.time()
         _LOG("Task {} started".format(tid), 'info')
 
     def __task_end(self, tid):
         with self.global_lock:
             self.running_tasks.discard(tid)
             self.groups[self.tasks[tid].group]['acquired'].discard(tid)
+        if 'start_time' in self.tasks[tid].status_data:
+            end_time = time.time()
+            self.tasks[tid].status_data['end_time'] = end_time
+            self.tasks[tid].status_data['time_elapsed'] = end_time - self.tasks[tid].status_data['start_time']
 
     def task_succeeded(self, tid):
         self.__task_end(tid)

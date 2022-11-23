@@ -36,6 +36,7 @@ class TasqueTask:
         self.output_buf = io.StringIO()
         self.result = None
         self.status = None
+        self.status_data = {}
 
         self.real_param_args = None
         self.real_param_kwargs = None
@@ -111,6 +112,7 @@ class TasqueTask:
         self.real_param_args = None
         self.real_param_kwargs = None
         self.status = None
+        self.status_data = {}
         if self.output_buf is not None:
             self.output_buf.close()
         self.output_buf = io.StringIO()

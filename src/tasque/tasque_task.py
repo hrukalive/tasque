@@ -144,6 +144,7 @@ class TasqueTask:
             "msg": self.msg,
             "group": self.group,
             "status": self.status,
+            "status_data": self.status_data,
             "result": self.result,
             "output": self.get_output(),
         }
@@ -157,6 +158,7 @@ class TasqueTask:
         # self.msg = save["msg"]
         # self.group = save["group"]
         self.status = save["status"]
+        self.status_data = save["status_data"]
         self.result = save["result"]
         if self.output_buf is not None:
             self.output_buf.close()

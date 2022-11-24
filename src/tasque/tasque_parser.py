@@ -18,8 +18,15 @@ def tasque_parse(task_spec, name_scope={}):
                     raise ValueError('Task argument kind not specified')
                 elif arg['kind'].lower() != 'extract' and arg['kind'].lower() != 'inject':
                     raise ValueError('Task argument kind must be one of "extract" or "inject"')
-                elif arg['kind'].lower() == 'extract' and 'from' not in arg:
+                elif arg['kind'].lower() == 'extract' and 'source' not in arg:
                     raise ValueError('Task argument source not specified')
+                elif arg['kind'].lower() == 'extract' and 'key' in arg and 'is_index' not in arg:
+                    raise ValueError('Task argument is_index not specified')
+                elif arg['kind'].lower() == 'extract' and 'key' in arg and 'is_index' in arg and arg['is_index']:
+                    try:
+                        arg['key'] = int(arg['key'])
+                    except ValueError:
+                        raise ValueError('Task argument key must be an integer if is_index is True')
                 elif arg['kind'].lower() == 'inject' and 'value' not in arg:
                     raise ValueError('Task argument value not specified')
         if 'param_kwargs' in spec:
@@ -28,8 +35,15 @@ def tasque_parse(task_spec, name_scope={}):
                     raise ValueError('Task argument kind not specified')
                 elif arg['kind'].lower() != 'extract' and arg['kind'].lower() != 'inject':
                     raise ValueError('Task argument kind must be one of "extract" or "inject"')
-                elif arg['kind'].lower() == 'extract' and 'from' not in arg:
+                elif arg['kind'].lower() == 'extract' and 'source' not in arg:
                     raise ValueError('Task argument source not specified')
+                elif arg['kind'].lower() == 'extract' and 'key' in arg and 'is_index' not in arg:
+                    raise ValueError('Task argument is_index not specified')
+                elif arg['kind'].lower() == 'extract' and 'key' in arg and 'is_index' in arg and arg['is_index']:
+                    try:
+                        arg['key'] = int(arg['key'])
+                    except ValueError:
+                        raise ValueError('Task argument key must be an integer if is_index is True')
                 elif arg['kind'].lower() == 'inject' and 'value' not in arg:
                     raise ValueError('Task argument value not specified')
         if spec['kind'].lower() == 'function':
@@ -80,13 +94,13 @@ def tasque_parse(task_spec, name_scope={}):
             if arg['kind'].lower() == 'inject':
                 param_args.append((TasqueTaskParamKind.INJECT, arg['value']))
             elif arg['kind'].lower() == 'extract':
-                param_args.append((TasqueTaskParamKind.EXTRACT, (arg['from'], arg['position']) if ('position' in arg and arg['position']) else arg['from']))
+                param_args.append((TasqueTaskParamKind.EXTRACT, (arg['source'], arg['key']) if ('key' in arg and arg['key'] is not None) else arg['source']))
         param_kwargs = {}
         for k, arg in spec.get('param_kwargs', {}).items():
             if arg['kind'].lower() == 'inject':
                 param_kwargs[k] = (TasqueTaskParamKind.INJECT, arg['value'])
             elif arg['kind'].lower() == 'extract':
-                param_kwargs[k] = (TasqueTaskParamKind.EXTRACT, (arg['from'], arg['position']) if ('position' in arg and arg['position']) else arg['from'])
+                param_kwargs[k] = (TasqueTaskParamKind.EXTRACT, (arg['source'], arg['key']) if ('key' in arg and arg['key'] is not None) else arg['source'])
         env_override = spec.get('env_override', {})
 
         if spec['kind'].lower() == 'function':

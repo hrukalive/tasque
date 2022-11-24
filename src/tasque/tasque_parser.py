@@ -80,13 +80,13 @@ def tasque_parse(task_spec, name_scope={}):
             if arg['kind'].lower() == 'inject':
                 param_args.append((TasqueTaskParamKind.INJECT, arg['value']))
             elif arg['kind'].lower() == 'extract':
-                param_args.append((TasqueTaskParamKind.EXTRACT, (arg['from'], arg['position']) if 'position' in arg else arg['from']))
+                param_args.append((TasqueTaskParamKind.EXTRACT, (arg['from'], arg['position']) if ('position' in arg and arg['position']) else arg['from']))
         param_kwargs = {}
         for k, arg in spec.get('param_kwargs', {}).items():
             if arg['kind'].lower() == 'inject':
                 param_kwargs[k] = (TasqueTaskParamKind.INJECT, arg['value'])
             elif arg['kind'].lower() == 'extract':
-                param_kwargs[k] = (TasqueTaskParamKind.EXTRACT, (arg['from'], arg['position']) if 'position' in arg else arg['from'])
+                param_kwargs[k] = (TasqueTaskParamKind.EXTRACT, (arg['from'], arg['position']) if ('position' in arg and arg['position']) else arg['from'])
         env_override = spec.get('env_override', {})
 
         if spec['kind'].lower() == 'function':

@@ -34,6 +34,7 @@ class TasqueTask:
         self.lock = threading.Lock()
 
         self.output_buf = io.StringIO()
+        self.output = ''
         self.result = None
         self.status = None
         self.status_data = {}
@@ -90,6 +91,8 @@ class TasqueTask:
         return ret_args, ret_kwargs
 
     def close(self):
+        self.cancel()
+        self.output = self.get_output()
         self.output_buf.close()
 
     def prepare(self, skip_if_running=True, reset_failed_status=True):
@@ -121,21 +124,22 @@ class TasqueTask:
     def cancel(self):
         if self.status == TasqueTaskStatus.RUNNING:
             self.cancel_token.set()
-        elif self.status != TasqueTaskStatus.SUCCEEDED and self.status != TasqueTaskStatus.FAILED:
+        elif self.status != TasqueTaskStatus.SUCCEEDED and self.status != TasqueTaskStatus.FAILED and self.status != TasqueTaskStatus.CANCELLED:
             self.cancel_token.set()
             self.status = TasqueTaskStatus.CANCELLED
             self.executor.task_cancelled(self.tid)
 
     def get_output(self):
         with self.lock:
-            ret = self.output_buf.getvalue()
-        return ret
+            if not self.output_buf.closed:
+                self.output = self.output_buf.getvalue()
+        return self.output
 
     def get_result(self):
         return self.result
 
-    def get_save(self):
-        return {
+    def get_save(self, with_output=False):
+        ret = {
             "tid": self.tid,
             "dependencies": self.dependencies,
             "real_param_args": self.real_param_args,
@@ -146,8 +150,10 @@ class TasqueTask:
             "status": self.status,
             "status_data": self.status_data,
             "result": self.result,
-            "output": self.get_output(),
         }
+        if with_output:
+            ret["output"] = self.get_output()
+        return ret
 
     def restore_save(self, save):
         # self.tid = save["tid"]
@@ -157,9 +163,10 @@ class TasqueTask:
         # self.name = save["name"]
         # self.msg = save["msg"]
         # self.group = save["group"]
-        self.status = save["status"]
-        self.status_data = save["status_data"]
-        self.result = save["result"]
-        if self.output_buf is not None:
-            self.output_buf.close()
-        self.output_buf = io.StringIO(save["output"])
+        self.status = save.get("status", None)
+        self.status_data = save.get("status_data", {})
+        self.result = save.get("result", None)
+        if 'output' in save:
+            if self.output_buf is not None:
+                self.output_buf.close()
+            self.output_buf = io.StringIO(save["output"])

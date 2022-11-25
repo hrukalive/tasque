@@ -78,7 +78,7 @@ def tasque_parse(task_spec, name_scope={}):
 
     executor = TasqueExecutor()
     executor.set_task_spec(task_spec)
-    executor.set_global_param(task_spec.get('global_params', {}))
+    executor.set_global_params(task_spec.get('global_params', {}))
     executor.set_root_dir(task_spec.get('root_dir', '.'))
     for k, v in task_spec.get('groups', {}).items():
         executor.configure_group(k, v)

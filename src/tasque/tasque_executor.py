@@ -19,6 +19,7 @@ class TasqueExecutor(object):
         self.global_params = {}
         self.root_dir = '/'
         self.task_spec = {}
+        self.task_status_change_callback = lambda tid: None
 
     def __enter__(self):
         return self
@@ -26,7 +27,7 @@ class TasqueExecutor(object):
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
 
-    def set_global_param(self, mapping):
+    def set_global_params(self, mapping):
         self.global_params = mapping
     def set_root_dir(self, root_dir):
         self.root_dir = root_dir
@@ -34,10 +35,13 @@ class TasqueExecutor(object):
         self.task_spec = task_spec
     def set_logger(self, logger):
         set_logger(logger)
+    def set_status_change_callback(self, callback):
+        self.task_status_change_callback = callback
 
     def close(self):
         if self.executor:
             self.executor.shutdown(wait=True)
+            self.executor = None
         for task in self.tasks.values():
             task.close()
 
@@ -130,7 +134,12 @@ class TasqueExecutor(object):
             for d_tid in nx.descendants(self.tid_graph, tid):
                 self.tasks[d_tid].cancel()
 
-    def get_all_tid(self):
+    def reset(self):
+        self.cancel()
+        for task in self.tasks.values():
+            task.reset()
+
+    def get_all_tids(self):
         return list(self.tasks.keys())
 
     def get_output(self, tid):
@@ -149,6 +158,7 @@ class TasqueExecutor(object):
             self.running_tasks.add(tid)
             self.tasks[tid].status_data['start_time'] = time.time()
         _LOG("Task {} started".format(tid), 'info')
+        self.task_status_change_callback(tid)
 
     def __task_end(self, tid):
         with self.global_lock:
@@ -162,19 +172,23 @@ class TasqueExecutor(object):
     def task_succeeded(self, tid):
         self.__task_end(tid)
         _LOG("Task {} succeeded".format(tid), 'info')
+        self.task_status_change_callback(tid)
 
     def task_failed(self, tid):
         self.__task_end(tid)
         _LOG("Task {} failed".format(tid), 'warn')
         self.cancel(tid)
+        self.task_status_change_callback(tid)
 
     def task_skipped(self, tid):
         self.__task_end(tid)
         _LOG("Task {} skipped".format(tid), 'info')
+        self.task_status_change_callback(tid)
 
     def task_cancelled(self, tid):
         self.__task_end(tid)
         _LOG("Task {} cancelled".format(tid), 'info')
+        self.task_status_change_callback(tid)
 
     def execute(self):
         for task in self.tasks.values():
@@ -197,7 +211,13 @@ class TasqueExecutor(object):
         else:
             return len(self.running_tasks) > 0
 
-    def get_save(self):
+    def is_successful(self):
+        for task in self.tasks.values():
+            if task.status != TasqueTaskStatus.SUCCEEDED:
+                return False
+        return True
+
+    def get_save(self, with_output=False):
         save = {
             'global_params': self.global_params,
             'root_dir': self.root_dir,
@@ -206,7 +226,7 @@ class TasqueExecutor(object):
             'tasks': {}
         }
         for task in self.tasks.values():
-            save['tasks'][task.tid] = task.get_save()
+            save['tasks'][task.tid] = task.get_save(with_output)
         return save
 
     def restore_save(self, save):
@@ -216,5 +236,5 @@ class TasqueExecutor(object):
         for k, v in save.get('groups', {}).items():
             self.configure_group(k, v)
         for task in self.tasks.values():
-            if task.tid in save['tasks']:
+            if task.tid in save.get('tasks', {}):
                 task.restore_save(save['tasks'][task.tid])

@@ -96,12 +96,6 @@ class TasqueExecutor(object):
             task.print_to_stdout = print_to_stdout
             task.prepare(skip_if_running, reset_failed_status)
 
-        # pos = nx.spring_layout(self.tid_graph, iterations=20)
-        # nx.draw(self.tid_graph, pos, node_size=50, alpha=0.8, edge_color="r", font_size=16, with_labels=True, arrowstyle="->", arrowsize=20, width=3)
-        # ax = plt.gca()
-        # ax.margins(0.08)
-        # plt.savefig('graph.png')
-
         if self.executor is None:
             self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=len(self.tasks) * 2, thread_name_prefix="tasque")
         return self.tid_graph
@@ -183,6 +177,7 @@ class TasqueExecutor(object):
     def task_skipped(self, tid):
         self.__task_end(tid)
         _LOG("Task {} skipped".format(tid), 'info')
+        self.cancel(tid)
         self.task_status_change_callback(tid)
 
     def task_cancelled(self, tid):

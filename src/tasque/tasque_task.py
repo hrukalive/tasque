@@ -107,8 +107,7 @@ class TasqueTask:
             self.status = TasqueTaskStatus.QUEUED
 
     def reset(self):
-        if self.status == TasqueTaskStatus.RUNNING:
-            self.cancel()
+        self.cancel()
         while self.status == TasqueTaskStatus.RUNNING:
             time.sleep(1)
         self.result = None
@@ -122,10 +121,8 @@ class TasqueTask:
         self.cancel_token.clear()
 
     def cancel(self):
-        if self.status == TasqueTaskStatus.RUNNING:
-            self.cancel_token.set()
-        elif self.status != TasqueTaskStatus.SUCCEEDED and self.status != TasqueTaskStatus.FAILED and self.status != TasqueTaskStatus.CANCELLED:
-            self.cancel_token.set()
+        self.cancel_token.set()
+        if self.status is None:
             self.status = TasqueTaskStatus.CANCELLED
             self.executor.task_cancelled(self.tid)
 

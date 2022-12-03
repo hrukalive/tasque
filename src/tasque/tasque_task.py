@@ -1,25 +1,25 @@
-from enum import Enum
+from enum import Enum, auto
 import threading
 import io
 import time
 
 from tasque.util import _LOG
 
-class TasqueTaskStatus(int, Enum):
-    QUEUED = 0
-    PENDING = 1
-    RUNNING = 2
-    SUCCEEDED = 3
-    FAILED = 4
-    CANCELLED = 5
+class TasqueTaskStatus(Enum):
+    CREATED = auto()
+    PREPARED = auto()
+    PENDING = auto()
+    RUNNING = auto()
+    SUCCEEDED = auto()
+    FAILED = auto()
+    CANCELLED = auto()
 
-class TasqueTaskParamKind(int, Enum):
-    EXTRACT = 1
-    INJECT = 2
+class TasqueTaskParamKind(Enum):
+    EXTRACT = auto()
+    INJECT = auto()
 
 class TasqueTask:
-    def __init__(self, tid, dependencies, param_args, param_kwargs, name, msg,
-                 group):
+    def __init__(self, tid, dependencies, param_args, param_kwargs, name, msg, group):
         self.executor = None
 
         self.tid = tid
@@ -36,7 +36,7 @@ class TasqueTask:
         self.output_buf = io.StringIO()
         self.output = ''
         self.result = None
-        self.status = None
+        self.status = TasqueTaskStatus.CREATED
         self.status_data = {}
 
         self.real_param_args = None
@@ -95,7 +95,7 @@ class TasqueTask:
         self.output = self.get_output()
         self.output_buf.close()
 
-    def prepare(self, skip_if_running=True, reset_failed_status=True):
+    def prepare(self, executor, print_to_stdout=True, skip_if_running=True, reset_failed_status=True):
         if self.status == TasqueTaskStatus.RUNNING and skip_if_running:
             return
         elif self.status == TasqueTaskStatus.SUCCEEDED:
@@ -104,32 +104,36 @@ class TasqueTask:
             return
         else:
             self.reset()
-            self.status = TasqueTaskStatus.QUEUED
+            self.executor = executor
+            self.print_to_stdout = print_to_stdout
+            self.status = TasqueTaskStatus.PREPARED
 
     def reset(self):
         self.cancel()
-        while self.status == TasqueTaskStatus.RUNNING:
+        while self.status == TasqueTaskStatus.RUNNING or self.status == TasqueTaskStatus.PENDING:
             time.sleep(1)
+        self.executor = None
         self.result = None
         self.real_param_args = None
         self.real_param_kwargs = None
-        self.status = None
+        self.status = TasqueTaskStatus.CREATED
         self.status_data = {}
         if self.output_buf is not None:
             self.output_buf.close()
         self.output_buf = io.StringIO()
+        self.output = ''
         self.cancel_token.clear()
 
     def cancel(self):
         self.cancel_token.set()
-        if self.status is None:
+        if self.status == TasqueTaskStatus.CREATED:
             self.status = TasqueTaskStatus.CANCELLED
-            self.executor.task_cancelled(self.tid)
+            if self.executor:
+                self.executor.task_cancelled(self.tid)
 
     def get_output(self):
-        with self.lock:
-            if not self.output_buf.closed:
-                self.output = self.output_buf.getvalue()
+        if not self.output_buf.closed:
+            self.output = self.output_buf.getvalue()
         return self.output
 
     def get_result(self):
@@ -144,7 +148,8 @@ class TasqueTask:
             "name": self.name,
             "msg": self.msg,
             "group": self.group,
-            "status": self.status,
+            "status": self.status.name,
+            "status_value": self.status.value,
             "status_data": self.status_data,
             "result": self.result,
         }
@@ -160,7 +165,7 @@ class TasqueTask:
         # self.name = save["name"]
         # self.msg = save["msg"]
         # self.group = save["group"]
-        self.status = save.get("status", None)
+        self.status = TasqueTaskStatus(save.get("status_value", 0))
         self.status_data = save.get("status_data", {})
         self.result = save.get("result", None)
         if 'output' in save:

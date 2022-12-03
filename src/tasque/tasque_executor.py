@@ -13,13 +13,11 @@ class TasqueExecutor(object):
         self.groups = {'default': {'acquired': set(), 'capacity': -1}}
         self.global_lock = threading.Lock()
         self.executor = None
-        self.futures = []
-        self.running_tasks = set()
+        self.futures = {}
         self.tid_graph = None
         self.global_params = {}
         self.root_dir = '/'
         self.task_spec = {}
-        self.task_status_change_callback = lambda tid: None
 
     def __enter__(self):
         return self
@@ -35,8 +33,6 @@ class TasqueExecutor(object):
         self.task_spec = task_spec
     def set_logger(self, logger):
         set_logger(logger)
-    def set_status_change_callback(self, callback):
-        self.task_status_change_callback = callback
 
     def close(self):
         if self.executor:
@@ -56,10 +52,7 @@ class TasqueExecutor(object):
             raise Exception("Task with id {} already exists".format(task.tid))
         self.tasks[task.tid] = task
 
-    def prepare(self, print_to_stdout=True, skip_if_running=True, reset_failed_status=True):
-        if self.futures:
-            raise Exception("Cannot prepare while there are concurrent futures pending. Please call wait() first.")
-
+    def pre_check(self):
         g = []
         for task in self.tasks.values():
             if task.group not in self.groups:
@@ -69,11 +62,11 @@ class TasqueExecutor(object):
                 if dep not in self.tasks:
                     raise Exception("Task {} not found".format(dep))
                 g.append((dep, task.tid))
-        self.tid_graph = nx.DiGraph(g)
+        tid_graph = nx.DiGraph(g)
         for task in self.tasks.values():
-            self.tid_graph.add_node(task.tid)
+            tid_graph.add_node(task.tid)
         try:
-            nx.find_cycle(self.tid_graph, orientation='original')
+            nx.find_cycle(tid_graph, orientation='original')
             raise Exception("Cycle detected in task graph")
         except nx.exception.NetworkXNoCycle:
             pass
@@ -88,13 +81,16 @@ class TasqueExecutor(object):
                         raise Exception("Invalid param specification")
                     if dep == 0:
                         continue
-                    if not nx.algorithms.has_path(self.tid_graph, dep, task.tid):
+                    if not nx.algorithms.has_path(tid_graph, dep, task.tid):
                         raise Exception(
                             "Task {} need to extract parameter from task {}, which must be its dependency.".format(task.tid, dep))
+        return tid_graph
+
+    def prepare(self, print_to_stdout=True, skip_if_running=True, reset_failed_status=True):
+        self.tid_graph = self.pre_check()
+
         for task in self.tasks.values():
-            task.executor = self
-            task.print_to_stdout = print_to_stdout
-            task.prepare(skip_if_running, reset_failed_status)
+            task.prepare(self, print_to_stdout, skip_if_running, reset_failed_status)
 
         if self.executor is None:
             self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=len(self.tasks) * 2, thread_name_prefix="tasque")
@@ -149,14 +145,11 @@ class TasqueExecutor(object):
         if tid not in self.groups[self.tasks[tid].group]['acquired']:
             raise Exception("Task {} not in the clear to run.".format(tid))
         else:
-            self.running_tasks.add(tid)
             self.tasks[tid].status_data['start_time'] = time.time()
         _LOG("Task {} started".format(tid), 'info')
-        self.task_status_change_callback(tid)
 
     def __task_end(self, tid):
         with self.global_lock:
-            self.running_tasks.discard(tid)
             self.groups[self.tasks[tid].group]['acquired'].discard(tid)
         if 'start_time' in self.tasks[tid].status_data:
             end_time = time.time()
@@ -166,45 +159,43 @@ class TasqueExecutor(object):
     def task_succeeded(self, tid):
         self.__task_end(tid)
         _LOG("Task {} succeeded".format(tid), 'info')
-        self.task_status_change_callback(tid)
 
     def task_failed(self, tid):
         self.__task_end(tid)
         _LOG("Task {} failed".format(tid), 'warn')
         self.cancel(tid)
-        self.task_status_change_callback(tid)
 
     def task_skipped(self, tid):
         self.__task_end(tid)
         _LOG("Task {} skipped".format(tid), 'info')
         self.cancel(tid)
-        self.task_status_change_callback(tid)
 
     def task_cancelled(self, tid):
         self.__task_end(tid)
         _LOG("Task {} cancelled".format(tid), 'info')
-        self.task_status_change_callback(tid)
 
     def execute(self):
         for task in self.tasks.values():
             if task.status == TasqueTaskStatus.FAILED:
                 self.cancel(task.tid)
         for task in self.tasks.values():
-            if task.status == TasqueTaskStatus.QUEUED:
-                self.futures.append(self.executor.submit(task))
+            if task.status == TasqueTaskStatus.PREPARED:
+                if task.tid in self.futures:
+                    try:
+                        self.futures[task.tid].result(5)
+                    except concurrent.futures.TimeoutError:
+                        self.futures[task.tid].cancel()
+                        self.futures.pop(task.tid)
+                self.futures[task.tid] = self.executor.submit(task)
 
     def wait(self):
-        for future in concurrent.futures.as_completed(self.futures):
+        for future in concurrent.futures.as_completed(self.futures.values()):
             future.result()
-        self.futures = []
 
-    def is_running(self, deep=False):
-        if deep:
-            for task in self.tasks.values():
-                if task.status == TasqueTaskStatus.RUNNING:
-                    return True
-        else:
-            return len(self.running_tasks) > 0
+    def is_running(self):
+        for task in self.tasks.values():
+            if task.status == TasqueTaskStatus.RUNNING or task.status == TasqueTaskStatus.PENDING:
+                return True
 
     def is_successful(self):
         for task in self.tasks.values():

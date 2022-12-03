@@ -44,8 +44,8 @@ class SubprocessTask(TasqueTask):
     def __call__(self):
         if not self.executor:
             raise Exception("Executor not set")
-        if self.status != TasqueTaskStatus.QUEUED:
-            _LOG(f'{self.tid} is not queued, skip.', 'warn', self.output_buf)
+        if self.status != TasqueTaskStatus.PREPARED:
+            _LOG(f'{self.tid} is not prepared, skip.', 'warn', self.output_buf)
             self.executor.task_skipped(self.tid)
             return self.result
         

@@ -2,6 +2,7 @@ import sys
 import select
 import threading
 import time
+import traceback
 
 from tasque.tasque_task import TasqueTask, TasqueTaskStatus
 from tasque.std_redirector import redirect, stop_redirect
@@ -55,6 +56,7 @@ class _FunctionTaskThread(_ThreadWithTrace):
             self.result = self._target(*self._args, **self._kwargs)
         except Exception as e:
             self.exc = e
+            print(traceback.format_exc())
         finally:
             stop_redirect()
         

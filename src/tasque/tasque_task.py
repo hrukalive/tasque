@@ -169,6 +169,9 @@ class TasqueTask:
         self.status_data = save.get("status_data", {})
         self.result = save.get("result", None)
         if 'output' in save:
-            if self.output_buf is not None:
-                self.output_buf.close()
-            self.output_buf = io.StringIO(save["output"])
+            with self.lock:
+                if not self.output_buf.closed:
+                    self.output_buf.truncate(0)
+                    self.output_buf.write(save["output"])
+                else:
+                    self.output = save["output"]

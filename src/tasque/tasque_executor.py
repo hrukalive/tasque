@@ -16,6 +16,7 @@ class TasqueExecutor(object):
         self.futures = {}
         self.tid_graph = None
         self.global_params = {}
+        self.global_env_override = {}
         self.root_dir = '/'
         self.task_spec = {}
 
@@ -27,6 +28,8 @@ class TasqueExecutor(object):
 
     def set_global_params(self, mapping):
         self.global_params = mapping
+    def set_global_env_override(self, mapping):
+        self.global_env_override = mapping
     def set_root_dir(self, root_dir):
         self.root_dir = root_dir
     def set_task_spec(self, task_spec):
@@ -206,6 +209,7 @@ class TasqueExecutor(object):
     def get_save(self, with_output=False):
         save = {
             'global_params': self.global_params,
+            'global_env_override': self.global_env_override,
             'root_dir': self.root_dir,
             'task_spec': self.task_spec,
             'groups': {k: v['capacity'] for k, v in self.groups.items() if k != 'default'},
@@ -215,12 +219,19 @@ class TasqueExecutor(object):
             save['tasks'][task.tid] = task.get_save(with_output)
         return save
 
-    def restore_save(self, save):
-        self.global_params = save.get('global_params', {})
-        self.root_dir = save.get('root_dir', '.')
-        self.task_spec = save.get('task_spec', {})
-        for k, v in save.get('groups', {}).items():
-            self.configure_group(k, v)
-        for task in self.tasks.values():
-            if task.tid in save.get('tasks', {}):
-                task.restore_save(save['tasks'][task.tid])
+    def restore_save(self, save, load_global_params, load_global_env_override, load_root_dir, load_groups, load_task_spec, load_tasks):
+        if load_global_params:
+            self.global_params = save.get('global_params', {})
+        if load_global_env_override:
+            self.global_env_override = save.get('global_env_override', {})
+        if load_root_dir:
+            self.root_dir = save.get('root_dir', '.')
+        if load_task_spec:
+            self.task_spec = save.get('task_spec', {})
+        if load_groups:
+            for k, v in save.get('groups', {}).items():
+                self.configure_group(k, v)
+        if load_tasks:
+            for task in self.tasks.values():
+                if task.tid in save.get('tasks', {}):
+                    task.restore_save(save['tasks'][task.tid])

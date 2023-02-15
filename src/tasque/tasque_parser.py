@@ -1,9 +1,10 @@
+import os
 from tasque.tasque_task import TasqueTaskParamKind
 from tasque.tasque_function_task import tasque_function_task
 from tasque.tasque_subprocess_task import tasque_subprocess_task, tasque_sh_task
 from tasque.tasque_executor import TasqueExecutor
 
-def tasque_parse(task_spec, name_scope={}):
+def tasque_parse(task_spec, name_scope={}, env={}):
     name_scope = {k: v for k, v in name_scope.items() if not k.startswith('__')}
     for tid, spec in task_spec['tasks'].items():
         try:
@@ -79,6 +80,8 @@ def tasque_parse(task_spec, name_scope={}):
     executor = TasqueExecutor()
     executor.set_task_spec(task_spec)
     executor.set_global_params(task_spec.get('global_params', {}))
+    executor.set_global_env_override(task_spec.get('global_env_override', {}))
+    global_env_override = env | task_spec.get('global_env_override', {})
     executor.set_root_dir(task_spec.get('root_dir', '.'))
     for k, v in task_spec.get('groups', {}).items():
         executor.configure_group(k, v)
@@ -101,7 +104,7 @@ def tasque_parse(task_spec, name_scope={}):
                 param_kwargs[k] = (TasqueTaskParamKind.INJECT, arg['value'])
             elif arg['kind'].lower() == 'extract':
                 param_kwargs[k] = (TasqueTaskParamKind.EXTRACT, (arg['source'], arg['key']) if ('key' in arg and arg['key'] is not None) else arg['source'])
-        env_override = spec.get('env_override', {})
+        env_override = global_env_override | spec.get('env_override', {})
 
         if spec['kind'].lower() == 'function':
             func = name_scope[spec['func_signature']]
@@ -113,7 +116,7 @@ def tasque_parse(task_spec, name_scope={}):
                 cmd = spec['cmd']
                 @tasque_subprocess_task(tid=tid, dependencies=dependencies, name=name, msg=msg, group=group, param_args=param_args, param_kwargs=param_kwargs, env_override=env_override)
                 def task_ret(*args, **kwargs):
-                    return cwd, [eval(f'f"""{template}"""', name_scope | {'args': args, 'kwargs': kwargs}) for template in cmd]
+                    return cwd, [eval(f'f"""{template}"""', name_scope | {'args': args, 'kwargs': kwargs, 'env': env_override}) for template in cmd]
                 return task_ret
             executor.add_task(wrapper())
         elif spec['kind'].lower() == 'sh':
@@ -122,7 +125,7 @@ def tasque_parse(task_spec, name_scope={}):
                 cmd = spec['cmd']
                 @tasque_sh_task(tid=tid, dependencies=dependencies, name=name, msg=msg, group=group, param_args=param_args, param_kwargs=param_kwargs, env_override=env_override)
                 def task_ret(*args, **kwargs):
-                    return cwd, eval(f'f"""{cmd}"""', name_scope | {'args': args, 'kwargs': kwargs})
+                    return cwd, eval(f'f"""{cmd}"""', name_scope | {'args': args, 'kwargs': kwargs, 'env': env_override})
                 return task_ret
             executor.add_task(wrapper())
         else:

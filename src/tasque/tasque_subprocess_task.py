@@ -30,7 +30,6 @@ class SubprocessTask(TasqueTask):
         def Wrapper(*args, **kwargs):
             cwd, cmd = func(*args, **kwargs)
             cmd = list(map(str, cmd))
-            _LOG("Executing: {}".format(subprocess.list2cmdline(cmd)), 'info')
             proc = subprocess.Popen(cmd,
                                     cwd=str(pathlib.Path(root_dir).joinpath(cwd).resolve()),
                                     env={**os.environ, **env_override},
@@ -38,7 +37,7 @@ class SubprocessTask(TasqueTask):
                                     stdout=subprocess.PIPE,
                                     stderr=subprocess.STDOUT,
                                     universal_newlines=True)
-            return proc
+            return proc, subprocess.list2cmdline(cmd)
         return Wrapper
 
     def __call__(self):
@@ -77,7 +76,9 @@ class SubprocessTask(TasqueTask):
 
             self.status = TasqueTaskStatus.RUNNING
             self.executor.task_started(self.tid)
-            proc = self.func(*ret_args, **ret_kwargs)
+            proc, cmd_line = self.func(*ret_args, **ret_kwargs)
+            self.cmd_line = cmd_line
+            _LOG("Executing: {}".format(cmd_line), 'info')
 
             def read_stdout(size=-1):
                 events = select.select([proc.stdout], [], [], 1)[0]

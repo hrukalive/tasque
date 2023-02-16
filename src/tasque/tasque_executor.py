@@ -28,10 +28,13 @@ class TasqueExecutor(object):
 
     def set_global_params(self, mapping):
         self.global_params = mapping
+        self.task_spec['global_params'] |= mapping
     def set_global_env_override(self, mapping):
         self.global_env_override = mapping
+        self.task_spec['global_env_override'] |= mapping
     def set_root_dir(self, root_dir):
         self.root_dir = root_dir
+        self.task_spec['root_dir'] = root_dir
     def set_task_spec(self, task_spec):
         self.task_spec = task_spec
     def set_logger(self, logger):
@@ -46,6 +49,7 @@ class TasqueExecutor(object):
 
     def configure_group(self, name, capacity):
         self.groups[name] = {'acquired': set(), 'capacity': capacity}
+        self.task_spec['groups'][name] = capacity
 
     def add_task(self, task):
         task = task(self.root_dir)
@@ -127,10 +131,15 @@ class TasqueExecutor(object):
             for d_tid in nx.descendants(self.tid_graph, tid):
                 self.tasks[d_tid].cancel()
 
-    def reset(self):
-        self.cancel()
-        for task in self.tasks.values():
-            task.reset()
+    def reset(self, tid=None):
+        if not tid:
+            self.cancel()
+            for task in self.tasks.values():
+                task.reset()
+        else:
+            self.tasks[tid].reset()
+            for d_tid in nx.descendants(self.tid_graph, tid):
+                self.tasks[d_tid].reset()
 
     def get_all_tids(self):
         return list(self.tasks.keys())

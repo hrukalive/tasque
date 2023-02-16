@@ -41,6 +41,7 @@ class TasqueTask:
 
         self.real_param_args = None
         self.real_param_kwargs = None
+        self.cmd_line = None
         
         self.print_to_stdout = False
 
@@ -145,6 +146,7 @@ class TasqueTask:
             "dependencies": self.dependencies,
             "real_param_args": self.real_param_args,
             "real_param_kwargs": self.real_param_kwargs,
+            "cmd_line": self.cmd_line,
             "name": self.name,
             "msg": self.msg,
             "group": self.group,

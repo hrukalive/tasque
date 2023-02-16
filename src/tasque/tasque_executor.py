@@ -41,6 +41,7 @@ class TasqueExecutor(object):
         set_logger(logger)
 
     def close(self):
+        self.cancel()
         if self.executor:
             self.executor.shutdown(wait=True)
             self.executor = None

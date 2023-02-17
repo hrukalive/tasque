@@ -215,6 +215,16 @@ class TasqueExecutor(object):
             if task.status != TasqueTaskStatus.SUCCEEDED:
                 return False
         return True
+    
+    def is_failed(self):
+        for task in self.tasks.values():
+            if task.status == TasqueTaskStatus.FAILED:
+                return True
+    
+    def is_cancelled(self):
+        for task in self.tasks.values():
+            if task.status == TasqueTaskStatus.CANCELLED:
+                return True
 
     def get_save(self, with_output=False):
         save = {

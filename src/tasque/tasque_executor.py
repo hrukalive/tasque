@@ -28,12 +28,18 @@ class TasqueExecutor(object):
 
     def set_global_params(self, mapping):
         self.global_params = mapping
+        if 'global_params' not in self.task_spec:
+            self.task_spec['global_params'] = {}
         self.task_spec['global_params'] |= mapping
     def set_global_env_override(self, mapping):
         self.global_env_override = mapping
+        if 'global_env_override' not in self.task_spec:
+            self.task_spec['global_env_override'] = {}
         self.task_spec['global_env_override'] |= mapping
     def set_root_dir(self, root_dir):
         self.root_dir = root_dir
+        if 'root_dir' not in self.task_spec:
+            self.task_spec['root_dir'] = {}
         self.task_spec['root_dir'] = root_dir
     def set_task_spec(self, task_spec):
         self.task_spec = task_spec

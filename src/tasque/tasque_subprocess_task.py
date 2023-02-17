@@ -29,6 +29,7 @@ class SubprocessTask(TasqueTask):
     def __cmd_task_transform(func, root_dir, env_override):
         def Wrapper(*args, **kwargs):
             cwd, cmd = func(*args, **kwargs)
+            cmd = [arg for arg in cmd if arg != '!remove!']
             cmd = list(map(str, cmd))
             proc = subprocess.Popen(cmd,
                                     cwd=str(pathlib.Path(root_dir).joinpath(cwd).resolve()),
@@ -78,7 +79,7 @@ class SubprocessTask(TasqueTask):
             self.executor.task_started(self.tid)
             proc, cmd_line = self.func(*ret_args, **ret_kwargs)
             self.cmd_line = cmd_line
-            _LOG("Executing: {}".format(cmd_line), 'info')
+            _LOG("Executing: {}".format(cmd_line), 'info', self.output_buf)
 
             def read_stdout(size=-1):
                 events = select.select([proc.stdout], [], [], 1)[0]

@@ -118,7 +118,7 @@ def tasque_parse(task_spec, name_scope={}, env={}):
                 cmd = spec['cmd']
                 @tasque_subprocess_task(tid=tid, dependencies=dependencies, name=name, msg=msg, group=group, param_args=param_args, param_kwargs=param_kwargs, env_override=env_override)
                 def task_ret(*args, **kwargs):
-                    return cwd, [eval(f'f"""{template}"""', name_scope | {'args': args, 'kwargs': kwargs, 'env': env_override, 'global': global_params, 'pathlib': pathlib}) for template in cmd]
+                    return cwd, [eval(f'f"""{template}"""', name_scope | {'args': args, 'kwargs': kwargs, 'env': env_override, 'global_params': global_params, 'pathlib': pathlib}) for template in cmd]
                 return task_ret
             executor.add_task(wrapper())
         elif spec['kind'].lower() == 'sh':
@@ -127,7 +127,7 @@ def tasque_parse(task_spec, name_scope={}, env={}):
                 cmd = spec['cmd']
                 @tasque_sh_task(tid=tid, dependencies=dependencies, name=name, msg=msg, group=group, param_args=param_args, param_kwargs=param_kwargs, env_override=env_override)
                 def task_ret(*args, **kwargs):
-                    return cwd, eval(f'f"""{cmd}"""', name_scope | {'args': args, 'kwargs': kwargs, 'env': env_override, 'global': global_params, 'pathlib': pathlib})
+                    return cwd, eval(f'f"""{cmd}"""', name_scope | {'args': args, 'kwargs': kwargs, 'env': env_override, 'global_params': global_params, 'pathlib': pathlib})
                 return task_ret
             executor.add_task(wrapper())
         else:

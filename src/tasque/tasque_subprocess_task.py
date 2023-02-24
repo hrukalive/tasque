@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 import subprocess
@@ -28,9 +29,16 @@ class SubprocessTask(TasqueTask):
     @staticmethod
     def __cmd_task_transform(func, root_dir, env_override):
         def Wrapper(*args, **kwargs):
-            cwd, cmd = func(*args, **kwargs)
-            cmd = [arg for arg in cmd if arg != '!remove!']
-            cmd = list(map(str, cmd))
+            cwd, cmd_orig = func(*args, **kwargs)
+            cmd = []
+            for arg in cmd_orig:
+                if arg == '!remove!':
+                    continue
+                elif arg.startswith('!json_list!'):
+                    for item in json.loads(arg[len('!json_list!'):]):
+                        cmd.append(str(item))
+                else:
+                    cmd.append(str(arg))
             proc = subprocess.Popen(cmd,
                                     cwd=str(pathlib.Path(root_dir).joinpath(cwd).resolve()),
                                     env={**os.environ, **env_override},

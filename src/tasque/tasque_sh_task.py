@@ -4,38 +4,24 @@ import pathlib
 import select
 import subprocess
 import sys
-from itertools import chain
+import tempfile
 
-from tasque.models import TasqueSubprocessTask, TasqueTaskStatus
+from tasque.models import TasqueShellTask, TasqueTaskStatus
 from tasque.tasque_task import TasqueTask
-from tasque.util import _LOG, eval_argument
+from tasque.util import _LOG
 
 
-class SubprocessTask(TasqueTask):
+class ShellTask(TasqueTask):
     def __init__(
-        self,
-        tid,
-        name,
-        msg,
-        cwd,
-        cmd,
-        param_args=[],
-        param_kwargs={},
-        groups=["default"],
-        dependencies=[],
-        env={},
+        self, tid, name, msg, cwd, script, shell="sh", groups=["default"], dependencies=[], env={}
     ):
         super().__init__(tid, name, msg, dependencies, groups, env)
         self.cwd = cwd
-        self.cmd = cmd
-        self.param_args = param_args
-        self.param_kwargs = param_kwargs
-        self.evaled_cmd = None
-        self.evaled_cmdline = None
-        self.evaled_param_args = None
-        self.evaled_param_kwargs = None
+        self.shell = shell
+        self.script = script
+        self.evaled_script = None
 
-    def __eval_arguments(self):
+    def __eval_script(self):
         task_results = {tid: self.executor.get_result(tid) for tid in self.dependencies}
         eval_name_scope = {
             "task_results": task_results,
@@ -43,22 +29,16 @@ class SubprocessTask(TasqueTask):
             "env": os.environ | self.executor.global_env | self.env,
             "pathlib": pathlib,
         }
-        self.evaled_param_args, self.evaled_param_kwargs = eval_argument(
-            self.param_args, self.param_kwargs, eval_name_scope
-        )
+        self.evaled_script = eval(f'f"""{self.script}"""', eval_name_scope)
 
     def reset(self):
         TasqueTask.reset(self)
-        self.evaled_cmd = None
-        self.evaled_cmdline = None
-        self.evaled_param_args = None
-        self.evaled_param_kwargs = None
+        self.evaled_script = None
 
     def run(self):
         try:
-            self.__eval_arguments()
-            _LOG("Apply arguments: {}".format(self.evaled_param_args), "info", self.log_buf)
-            _LOG("Apply keyword arguments: {}".format(self.evaled_param_kwargs), "info", self.log_buf)
+            self.__eval_script()
+            _LOG("Script: {}".format(self.evaled_script), "info", self.log_buf)
 
             if self.cancel_token.is_set():
                 self.status = TasqueTaskStatus.CANCELLED
@@ -67,13 +47,10 @@ class SubprocessTask(TasqueTask):
             self.status = TasqueTaskStatus.RUNNING
             self.executor.task_started(self.tid)
 
-            cmd = [self.cmd] \
-                + list(map(str, self.evaled_param_args)) \
-                + list(
-                    chain.from_iterable(
-                        map(lambda x: [str(x[0]), str(x[1])], self.evaled_param_kwargs.items())
-                    )
-                )
+            script_file = tempfile.NamedTemporaryFile(mode="w+", delete=False)
+            script_file.write(self.evaled_script)
+            script_file.close()
+            cmd = [self.shell, script_file.name]
             proc = subprocess.Popen(
                 cmd,
                 cwd=str(pathlib.Path(self.executor.root_dir).joinpath(self.cwd).resolve()),
@@ -124,44 +101,39 @@ class SubprocessTask(TasqueTask):
     def state_dict(self):
         with self.lock:
             ret = {
-                "type": 'subprocess',
+                "type": "sh",
                 "tid": self.tid,
-                "config": TasqueSubprocessTask(
+                "config": TasqueShellTask(
                     name=self.name,
                     msg=self.msg,
                     dependencies=self.dependencies,
                     groups=self.groups,
                     env=self.env,
                     cwd=self.cwd,
-                    cmd=self.cmd,
-                    args=self.param_args,
-                    kwargs=self.param_kwargs,
+                    shell=self.shell,
+                    script=self.script
                 ).dict(),
                 "log": self.get_log(),
                 "result": self.result,
                 "status": self.status.value,
                 "status_data": self.status_data,
-                "evaled_cmd": self.evaled_cmd,
-                "evaled_cmdline": self.evaled_cmdline,
-                "evaled_param_args": self.evaled_param_args,
-                "evaled_param_kwargs": self.evaled_param_kwargs,
+                "evaled_script": self.evaled_script,
             }
             return ret
 
     def load_state_dict(self, state_dict):
         with self.lock:
             self.tid = state_dict["tid"]
-
-            config = TasqueSubprocessTask.parse_obj(state_dict["config"])
+            
+            config = TasqueShellTask.parse_obj(state_dict["config"])
             self.name = config.name
             self.msg = config.msg
             self.dependencies = config.dependencies
             self.groups = config.groups
             self.env = config.env
             self.cwd = config.cwd
-            self.cmd = config.cmd
-            self.param_args = config.args
-            self.param_kwargs = config.kwargs
+            self.shell = config.shell
+            self.script = config.script
 
             if self.log_buf is not None and not self.log_buf.closed:
                 self.log_buf.close()
@@ -171,7 +143,4 @@ class SubprocessTask(TasqueTask):
             self.result = state_dict["result"]
             self.status = TasqueTaskStatus(state_dict["status"])
             self.status_data = state_dict["status_data"]
-            self.evaled_cmd = state_dict["evaled_cmd"]
-            self.evaled_cmdline = state_dict["evaled_cmdline"]
-            self.evaled_param_args = state_dict["evaled_param_args"]
-            self.evaled_param_kwargs = state_dict["evaled_param_kwargs"]
+            self.evaled_script = state_dict["evaled_script"]

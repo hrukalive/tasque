@@ -1,54 +1,48 @@
-import sys
+import io
+import os
+import pathlib
 import select
+import sys
 import threading
-import time
 import traceback
 
-from tasque.tasque_task import TasqueTask, TasqueTaskStatus
+from tasque.models import TasqueFunctionTask, TasqueTaskStatus
 from tasque.std_redirector import redirect, stop_redirect
-from tasque.util import _LOG
+from tasque.tasque_task import TasqueTask
+from tasque.util import _LOG, eval_argument
+
 
 class _ThreadWithTrace(threading.Thread):
     def __init__(self, *args, **keywords):
         threading.Thread.__init__(self, *args, **keywords)
         self.killed = False
-
     def start(self):
         self.__run_backup = self.run
         self.run = self.__run
         threading.Thread.start(self)
-
     def __run(self):
         sys.settrace(self.globaltrace)
         self.__run_backup()
         self.run = self.__run_backup
-
     def globaltrace(self, frame, event, arg):
-        if event == 'call':
+        if event == "call":
             return self.localtrace
         else:
             return None
-
     def localtrace(self, frame, event, arg):
         if self.killed:
-            if event == 'line':
+            if event == "line":
                 stop_redirect()
                 raise SystemExit()
         return self.localtrace
-
     def kill(self):
         self.killed = True
 
 class _FunctionTaskThread(_ThreadWithTrace):
     def __init__(self, func, param_args, param_kwargs, *args, **kwargs):
-        super().__init__(target=func,
-                         args=param_args,
-                         kwargs=param_kwargs,
-                         *args,
-                         **kwargs)
+        super().__init__(target=func, args=param_args, kwargs=param_kwargs, *args, **kwargs)
         self.r_stream = None
         self.result = None
-
     def run(self):
         self.r_stream = redirect()
         self.exc = None
@@ -59,80 +53,81 @@ class _FunctionTaskThread(_ThreadWithTrace):
             print(traceback.format_exc())
         finally:
             stop_redirect()
-        
     def raise_exc(self):
         if self.exc:
             raise self.exc
 
 class FunctionTask(TasqueTask):
-    def __init__(self,
-                 func,
-                 tid,
-                 dependencies,
-                 param_args,
-                 param_kwargs,
-                 name,
-                 msg,
-                 group='default'):
-        super().__init__(tid, dependencies, param_args, param_kwargs, name,
-                         msg, group)
+    def __init__(
+        self,
+        tid,
+        name,
+        msg,
+        func_name,
+        func,
+        param_args=[],
+        param_kwargs={},
+        groups=["default"],
+        dependencies=[],
+        env={},
+    ):
+        super().__init__(tid, name, msg, dependencies, groups, env)
+        self.func_name = func_name
         self.func = func
+        self.param_args = param_args
+        self.param_kwargs = param_kwargs
+        self.evaled_param_args = None
+        self.evaled_param_kwargs = None
 
-    def __call__(self):
-        if not self.executor:
-            raise Exception("Executor not set")
-        if self.status != TasqueTaskStatus.PREPARED:
-            _LOG(f'{self.tid} is not prepared, skip.', 'warn', self.output_buf)
-            self.executor.task_skipped(self.tid)
-            return self.result
+    def __eval_arguments(self):
+        task_results = {tid: self.executor.get_result(tid) for tid in self.dependencies}
+        eval_name_scope = {
+            "task_results": task_results,
+            "global_params": self.executor.global_params,
+            "env": os.environ | self.executor.global_env | self.env,
+            "pathlib": pathlib,
+        }
+        self.evaled_param_args, self.evaled_param_kwargs = eval_argument(
+            self.param_args, self.param_kwargs, eval_name_scope
+        )
 
-        self.status = TasqueTaskStatus.PENDING
-        while not self.executor.satisfied(self.tid, self.dependencies):
-            if self.cancel_token.is_set():
-                self.status = TasqueTaskStatus.CANCELLED
-                self.executor.task_cancelled(self.tid)
-                return -1
-            time.sleep(1)
-        while not self.executor.acquire_clearance_to_run(self.tid, self.group):
-            if self.cancel_token.is_set():
-                self.status = TasqueTaskStatus.CANCELLED
-                self.executor.task_cancelled(self.tid)
-                return -1
-            time.sleep(1)
+    def reset(self):
+        TasqueTask.reset(self)
+        self.evaled_param_args = None
+        self.evaled_param_kwargs = None
 
+    def run(self):
         try:
-            ret_args, ret_kwargs = self._get_params()
-            self.real_param_args = ret_args
-            self.real_param_kwargs = ret_kwargs
-            _LOG("Apply arguments: {}".format(ret_args), 'info', self.output_buf)
-            _LOG("Apply keyword arguments: {}".format(ret_kwargs), 'info', self.output_buf)
-            
+            self.__eval_arguments()
+            _LOG("Apply arguments: {}".format(self.evaled_param_args), "info", self.log_buf)
+            _LOG("Apply keyword arguments: {}".format(self.evaled_param_kwargs), "info", self.log_buf)
+
             if self.cancel_token.is_set():
                 self.status = TasqueTaskStatus.CANCELLED
                 self.executor.task_cancelled(self.tid)
                 return -1
-
             # Run task in another thread
             self.status = TasqueTaskStatus.RUNNING
             self.executor.task_started(self.tid)
-            thread = _FunctionTaskThread(self.func, ret_args, ret_kwargs)
+
+            thread = _FunctionTaskThread(
+                self.func, self.evaled_param_args, self.evaled_param_kwargs
+            )
             thread.start()
             while thread.r_stream is None:
                 pass
-
             def read_stdout(size=-1):
                 events = select.select([thread.r_stream], [], [], 1)[0]
                 for fd in events:
                     line = fd.read(size)
                     with self.lock:
-                        self.output_buf.write(line)
+                        self.log_buf.write(line)
                     if self.print_to_stdout:
                         sys.stdout.write(line)
-
             while thread.is_alive():
                 if self.cancel_token.is_set():
                     thread.kill()
-                    _LOG(f"Thread in task {self.tid} killed", 'info', self.output_buf)
+                    _LOG(f"Thread in task {self.tid} killed", "info", self.log_buf)
                     read_stdout()
                     thread.r_stream.close()
                     self.status = TasqueTaskStatus.CANCELLED
@@ -147,27 +142,65 @@ class FunctionTask(TasqueTask):
         except Exception as e:
             self.status = TasqueTaskStatus.FAILED
             self.executor.task_failed(self.tid)
-            _LOG(e, 'error', self.output_buf)
+            _LOG(e, "error", self.log_buf)
             return None
-
         try:
             thread.raise_exc()
-        except Exception as e:
+        except Exception:
             self.status = TasqueTaskStatus.FAILED
             self.executor.task_failed(self.tid)
             return -1
-
         self.result = thread.result
         self.status = TasqueTaskStatus.SUCCEEDED
         self.executor.task_succeeded(self.tid)
         return thread.result
 
+    def state_dict(self):
+        with self.lock:
+            ret = {
+                "tid": self.tid,
+                "config": TasqueFunctionTask(
+                    name=self.name,
+                    msg=self.msg,
+                    dependencies=self.dependencies,
+                    groups=self.groups,
+                    env=self.env,
+                    func=self.func_name,
+                    args=self.param_args,
+                    kwargs=self.param_kwargs
+                ).dict(),
+                "log": self.get_log(),
+                "result": self.result,
+                "status": self.status.value,
+                "status_data": self.status_data,
+                "evaled_param_args": self.evaled_param_args,
+                "evaled_param_kwargs": self.evaled_param_kwargs,
+            }
+            return ret
 
-def tasque_function_task(tid, dependencies, name, group, msg='', param_args=[], param_kwargs={}):
-    def Inner(func):
-        def Wrapper(*args, **kwargs):
-            task = FunctionTask(func, tid, dependencies, param_args,
-                                param_kwargs, name, msg, group)
-            return task
-        return Wrapper
-    return Inner
+    def load_state_dict(self, state_dict, name_scope=None):
+        with self.lock:
+            self.tid = state_dict["tid"]
+
+            config = TasqueFunctionTask.parse_obj(state_dict["config"])
+            self.name = config.name
+            self.msg = config.msg
+            self.dependencies = config.dependencies
+            self.groups = config.groups
+            self.env = config.env
+            self.func_name = config.func
+            if name_scope is not None:
+                self.func = name_scope[config.func]
+            self.param_args = config.args
+            self.param_kwargs = config.kwargs
+
+            if self.log_buf is not None and not self.log_buf.closed:
+                self.log_buf.close()
+            self.log_buf = io.StringIO()
+            self.log_buf.write(state_dict["log"])
+
+            self.result = state_dict["result"]
+            self.status = TasqueTaskStatus(state_dict["status"])
+            self.status_data = state_dict["status_data"]
+            self.evaled_param_args = state_dict["evaled_param_args"]
+            self.evaled_param_kwargs = state_dict["evaled_param_kwargs"]

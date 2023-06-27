@@ -1,24 +1,32 @@
-import threading
 import concurrent.futures
-import networkx as nx
+import threading
 import time
-# import matplotlib.pyplot as plt
 
-from tasque.tasque_task import TasqueTaskStatus, TasqueTaskParamKind
+import networkx as nx
+
+# import matplotlib.pyplot as plt
+from tasque.communicator import TasqueCommunicator
+from tasque.models import (
+    TasqueExternalAcquisition,
+    TasqueExternalStateDependency,
+    TasqueTaskStatus,
+)
 from tasque.util import _LOG, set_logger
 
+
 class TasqueExecutor(object):
-    def __init__(self):
+    def __init__(self, id) -> None:
+        self.id = id
+        self.communicator = TasqueCommunicator()
         self.tasks = {}
         self.groups = {'default': {'acquired': set(), 'capacity': -1}}
         self.global_lock = threading.Lock()
-        self.executor = None
+        self.executor: concurrent.futures.Executor = None
         self.futures = {}
-        self.tid_graph = None
+        self.tid_graph: nx.DiGraph = None
         self.global_params = {}
-        self.global_env_override = {}
+        self.global_env = {}
         self.root_dir = '/'
-        self.task_spec = {}
 
     def __enter__(self):
         return self
@@ -26,23 +34,6 @@ class TasqueExecutor(object):
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
 
-    def set_global_params(self, mapping):
-        self.global_params = mapping
-        if 'global_params' not in self.task_spec:
-            self.task_spec['global_params'] = {}
-        self.task_spec['global_params'] |= mapping
-    def set_global_env_override(self, mapping):
-        self.global_env_override = mapping
-        if 'global_env_override' not in self.task_spec:
-            self.task_spec['global_env_override'] = {}
-        self.task_spec['global_env_override'] |= mapping
-    def set_root_dir(self, root_dir):
-        self.root_dir = root_dir
-        if 'root_dir' not in self.task_spec:
-            self.task_spec['root_dir'] = {}
-        self.task_spec['root_dir'] = root_dir
-    def set_task_spec(self, task_spec):
-        self.task_spec = task_spec
     def set_logger(self, logger):
         set_logger(logger)
 
@@ -56,10 +47,8 @@ class TasqueExecutor(object):
 
     def configure_group(self, name, capacity):
         self.groups[name] = {'acquired': set(), 'capacity': capacity}
-        self.task_spec['groups'][name] = capacity
 
     def add_task(self, task):
-        task = task(self.root_dir)
         if task.tid == 0:
             raise Exception("Task ID 0 is reserved for global parameters")
         if task.tid in self.tasks:
@@ -69,39 +58,25 @@ class TasqueExecutor(object):
     def pre_check(self):
         g = []
         for task in self.tasks.values():
-            if task.group not in self.groups:
-                raise Exception("Task group {} not configured".format(
-                    task.group))
+            for t_g in task.groups:
+                if isinstance(t_g, str) and t_g not in self.groups:
+                    raise Exception("Task group {} not configured".format(
+                        task.group))
             for dep in task.dependencies:
-                if dep not in self.tasks:
+                if isinstance(dep, int) and dep not in self.tasks:
                     raise Exception("Task {} not found".format(dep))
                 g.append((dep, task.tid))
-        tid_graph = nx.DiGraph(g)
+        self.tid_graph = nx.DiGraph(g)
         for task in self.tasks.values():
-            tid_graph.add_node(task.tid)
+            self.tid_graph.add_node(task.tid)
         try:
-            nx.find_cycle(tid_graph, orientation='original')
+            nx.find_cycle(self.tid_graph, orientation='original')
             raise Exception("Cycle detected in task graph")
         except nx.exception.NetworkXNoCycle:
             pass
-        for task in self.tasks.values():
-            for (kind, param) in task.param_args + list(task.param_kwargs.values()):
-                if kind == TasqueTaskParamKind.EXTRACT:
-                    if isinstance(param, int):
-                        dep = param
-                    elif isinstance(param, tuple):
-                        dep, _ = param
-                    else:
-                        raise Exception("Invalid param specification")
-                    if dep == 0:
-                        continue
-                    if not nx.algorithms.has_path(tid_graph, dep, task.tid):
-                        raise Exception(
-                            "Task {} need to extract parameter from task {}, which must be its dependency.".format(task.tid, dep))
-        return tid_graph
 
     def prepare(self, print_to_stdout=True, skip_if_running=True, reset_failed_status=True):
-        self.tid_graph = self.pre_check()
+        self.pre_check()
 
         for task in self.tasks.values():
             task.prepare(self, print_to_stdout, skip_if_running, reset_failed_status)
@@ -112,20 +87,39 @@ class TasqueExecutor(object):
 
     def satisfied(self, tid, dependencies):
         for dependency in dependencies:
-            if self.tasks[dependency].status != TasqueTaskStatus.SUCCEEDED:
+            if isinstance(dependency, TasqueExternalStateDependency):
+                if not self.communicator.satisfied(self.id, tid, dependency):
+                    return False
+            elif self.tasks[dependency].status != TasqueTaskStatus.SUCCEEDED:
                 return False
         return True
 
     # If all dependencies are satisfied, then this task is ready to run.
     # Check for clearance to run in the group.
-    def acquire_clearance_to_run(self, tid, group_name):
-        with self.global_lock:
-            acquired = self.groups[group_name]['acquired']
-            capacity = self.groups[group_name]['capacity']
-            if tid in acquired:
-                return True
-            elif capacity == -1 or len(acquired) < capacity:
-                acquired.add(tid)
+    def acquire_clearance_to_run(self, tid, groups):
+        with self.global_lock and self.communicator.lock:
+            copied_groups = self.groups.copy()
+            group_names, external = [], []
+            for g in groups:
+                if isinstance(g, TasqueExternalAcquisition):
+                    external.append(g)
+                elif isinstance(g, str):
+                    group_names.append(g)
+                    
+            local_satisfied = True
+            for group_name in group_names:
+                acquired = copied_groups[group_name]['acquired']
+                capacity = copied_groups[group_name]['capacity']
+                if tid in acquired:
+                    continue
+                elif capacity == -1 or len(acquired) < capacity:
+                    acquired.add(tid)
+                else:
+                    local_satisfied = False
+                    break
+                
+            if local_satisfied and self.communicator.acquire_clearance_to_run(self.id, tid, external):
+                self.groups = copied_groups
                 return True
         return False
 
@@ -151,8 +145,8 @@ class TasqueExecutor(object):
     def get_all_tids(self):
         return list(self.tasks.keys())
 
-    def get_output(self, tid):
-        return self.tasks[tid].get_output()
+    def get_log(self, tid):
+        return self.tasks[tid].get_log()
 
     def get_result(self, tid):
         return self.tasks[tid].get_result()
@@ -161,15 +155,36 @@ class TasqueExecutor(object):
         return self.tasks[tid].status, self.tasks[tid].status_data
 
     def task_started(self, tid):
-        if tid not in self.groups[self.tasks[tid].group]['acquired']:
+        group_names, external = [], []
+        for g in self.tasks[tid].groups:
+            if isinstance(g, TasqueExternalAcquisition):
+                external.append(g)
+            elif isinstance(g, str):
+                group_names.append(g)
+        for gn in group_names:
+            if tid not in self.groups[gn]['acquired']:
+                raise Exception("Task {} not in the clear to run.".format(tid))
+        if not self.communicator.is_clear_to_run(self.id, tid, external):
             raise Exception("Task {} not in the clear to run.".format(tid))
-        else:
-            self.tasks[tid].status_data['start_time'] = time.time()
+
+        self.tasks[tid].status_data['start_time'] = time.time()
         _LOG("Task {} started".format(tid), 'info')
 
     def __task_end(self, tid):
-        with self.global_lock:
-            self.groups[self.tasks[tid].group]['acquired'].discard(tid)
+        with self.global_lock and self.communicator.lock:
+            copied_groups = self.groups.copy()
+            group_names, external = [], []
+            for g in self.tasks[tid].groups:
+                if isinstance(g, TasqueExternalAcquisition):
+                    external.append(g)
+                elif isinstance(g, str):
+                    group_names.append(g)
+
+            for group_name in group_names:
+                copied_groups[group_name]['acquired'].discard(tid)
+            if self.communicator.release_acquired(self.id, tid, external):
+                self.groups = copied_groups
+
         if 'start_time' in self.tasks[tid].status_data:
             end_time = time.time()
             self.tasks[tid].status_data['end_time'] = end_time
@@ -232,32 +247,30 @@ class TasqueExecutor(object):
             if task.status == TasqueTaskStatus.CANCELLED:
                 return True
 
-    def get_save(self, with_output=False):
+    def state_dict(self):
         save = {
+            'name': self.id,
             'global_params': self.global_params,
-            'global_env_override': self.global_env_override,
+            'global_env': self.global_env,
             'root_dir': self.root_dir,
-            'task_spec': self.task_spec,
             'groups': {k: v['capacity'] for k, v in self.groups.items() if k != 'default'},
             'tasks': {}
         }
         for task in self.tasks.values():
-            save['tasks'][task.tid] = task.get_save(with_output)
+            save['tasks'][task.tid] = task.state_dict()
         return save
 
-    def restore_save(self, save, load_global_params, load_global_env_override, load_root_dir, load_groups, load_task_spec, load_tasks):
+    def load_state_dict(self, save, load_global_params, load_global_env, load_root_dir, load_groups, load_tasks):
         if load_global_params:
-            self.global_params = save.get('global_params', {})
-        if load_global_env_override:
-            self.global_env_override = save.get('global_env_override', {})
+            self.global_params = save['global_params']
+        if load_global_env:
+            self.global_env = save['global_env']
         if load_root_dir:
-            self.root_dir = save.get('root_dir', '.')
-        if load_task_spec:
-            self.task_spec = save.get('task_spec', {})
+            self.root_dir = save['root_dir']
         if load_groups:
-            for k, v in save.get('groups', {}).items():
+            for k, v in save['groups'].items():
                 self.configure_group(k, v)
         if load_tasks:
             for task in self.tasks.values():
-                if task.tid in save.get('tasks', {}):
-                    task.restore_save(save['tasks'][task.tid])
+                if task.tid in save['tasks']:
+                    task.load_state_dict(save['tasks'][task.tid])

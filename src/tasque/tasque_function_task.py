@@ -9,7 +9,7 @@ import traceback
 from tasque.models import TasqueFunctionTask, TasqueTaskStatus
 from tasque.std_redirector import redirect, stop_redirect
 from tasque.tasque_task import TasqueTask
-from tasque.util import _LOG, eval_argument
+from tasque.util import _LOG, eval_arguments
 
 
 class _ThreadWithTrace(threading.Thread):
@@ -87,7 +87,7 @@ class FunctionTask(TasqueTask):
             "env": os.environ | self.executor.global_env | self.env,
             "pathlib": pathlib,
         }
-        self.evaled_param_args, self.evaled_param_kwargs = eval_argument(
+        self.evaled_param_args, self.evaled_param_kwargs = eval_arguments(
             self.param_args, self.param_kwargs, eval_name_scope
         )
 

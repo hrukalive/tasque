@@ -8,7 +8,7 @@ from itertools import chain
 
 from tasque.models import TasqueSubprocessTask, TasqueTaskStatus
 from tasque.tasque_task import TasqueTask
-from tasque.util import _LOG, eval_argument
+from tasque.util import _LOG, eval_options
 
 
 class SubprocessTask(TasqueTask):
@@ -19,8 +19,7 @@ class SubprocessTask(TasqueTask):
         msg,
         cwd,
         cmd,
-        param_args=[],
-        param_kwargs={},
+        options=[],
         groups=["default"],
         dependencies=[],
         env={},
@@ -28,14 +27,12 @@ class SubprocessTask(TasqueTask):
         super().__init__(tid, name, msg, dependencies, groups, env)
         self.cwd = cwd
         self.cmd = cmd
-        self.param_args = param_args
-        self.param_kwargs = param_kwargs
+        self.options = options
         self.evaled_cmd = None
         self.evaled_cmdline = None
-        self.evaled_param_args = None
-        self.evaled_param_kwargs = None
+        self.evaled_options = None
 
-    def __eval_arguments(self):
+    def __eval_options(self):
         task_results = {tid: self.executor.get_result(tid) for tid in self.dependencies}
         eval_name_scope = {
             "task_results": task_results,
@@ -43,22 +40,18 @@ class SubprocessTask(TasqueTask):
             "env": os.environ | self.executor.global_env | self.env,
             "pathlib": pathlib,
         }
-        self.evaled_param_args, self.evaled_param_kwargs = eval_argument(
-            self.param_args, self.param_kwargs, eval_name_scope
-        )
+        self.evaled_options = eval_options(self.options, eval_name_scope)
 
     def reset(self):
         TasqueTask.reset(self)
         self.evaled_cmd = None
         self.evaled_cmdline = None
-        self.evaled_param_args = None
-        self.evaled_param_kwargs = None
+        self.evaled_options = None
 
     def run(self):
         try:
-            self.__eval_arguments()
-            _LOG("Apply arguments: {}".format(self.evaled_param_args), "info", self.log_buf)
-            _LOG("Apply keyword arguments: {}".format(self.evaled_param_kwargs), "info", self.log_buf)
+            self.__eval_options()
+            _LOG("Apply options: {}".format(self.evaled_options), "info", self.log_buf)
 
             if self.cancel_token.is_set():
                 self.status = TasqueTaskStatus.CANCELLED
@@ -67,13 +60,7 @@ class SubprocessTask(TasqueTask):
             self.status = TasqueTaskStatus.RUNNING
             self.executor.task_started(self.tid)
 
-            cmd = [self.cmd] \
-                + list(map(str, self.evaled_param_args)) \
-                + list(
-                    chain.from_iterable(
-                        map(lambda x: [str(x[0]), str(x[1])], self.evaled_param_kwargs.items())
-                    )
-                )
+            cmd = [self.cmd] + list(map(str, self.evaled_options))
             proc = subprocess.Popen(
                 cmd,
                 cwd=str(pathlib.Path(self.executor.root_dir).joinpath(self.cwd).resolve()),
@@ -134,8 +121,7 @@ class SubprocessTask(TasqueTask):
                     env=self.env,
                     cwd=self.cwd,
                     cmd=self.cmd,
-                    args=self.param_args,
-                    kwargs=self.param_kwargs,
+                    options=self.options,
                 ).dict(),
                 "log": self.get_log(),
                 "result": self.result,
@@ -143,8 +129,7 @@ class SubprocessTask(TasqueTask):
                 "status_data": self.status_data,
                 "evaled_cmd": self.evaled_cmd,
                 "evaled_cmdline": self.evaled_cmdline,
-                "evaled_param_args": self.evaled_param_args,
-                "evaled_param_kwargs": self.evaled_param_kwargs,
+                "evaled_options": self.evaled_options,
             }
             return ret
 
@@ -160,8 +145,7 @@ class SubprocessTask(TasqueTask):
             self.env = config.env
             self.cwd = config.cwd
             self.cmd = config.cmd
-            self.param_args = config.args
-            self.param_kwargs = config.kwargs
+            self.options = config.options
 
             if self.log_buf is not None and not self.log_buf.closed:
                 self.log_buf.close()
@@ -173,5 +157,4 @@ class SubprocessTask(TasqueTask):
             self.status_data = state_dict["status_data"]
             self.evaled_cmd = state_dict["evaled_cmd"]
             self.evaled_cmdline = state_dict["evaled_cmdline"]
-            self.evaled_param_args = state_dict["evaled_param_args"]
-            self.evaled_param_kwargs = state_dict["evaled_param_kwargs"]
+            self.evaled_options = state_dict["evaled_options"]

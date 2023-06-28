@@ -1,18 +1,18 @@
 import os
-from enum import Enum, auto
+from enum import Enum
 from typing import Any, Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel, Extra, Field
 
 
-class TasqueTaskStatus(Enum):
-    CREATED = auto()
-    PREPARED = auto()
-    PENDING = auto()
-    RUNNING = auto()
-    SUCCEEDED = auto()
-    FAILED = auto()
-    CANCELLED = auto()
+class TasqueTaskStatus(str, Enum):
+    CREATED = 'created'
+    PREPARED = 'prepared'
+    PENDING = 'pending'
+    RUNNING = 'running'
+    SUCCEEDED = 'succeeded'
+    FAILED = 'failed'
+    CANCELLED = 'cancelled'
 
 class TasqueTaskArgument(BaseModel):
     expr: str
@@ -55,14 +55,18 @@ class TasqueSubprocessTask(TasqueBaseTask):
     type: str = Field("subprocess", const=True)
     cwd: str = "."
     cmd: str = "echo"
-    args: Optional[
-        List[Union[str, TasqueTaskListArgument, TasqueTaskFstrArgument, TasqueTaskArgument]]
-    ] = []
-    kwargs: Optional[
+    options: Optional[
         List[
             Union[
+                str,
                 TasqueTaskDictArgument,
-                Dict[str, Union[str, TasqueTaskFstrArgument, TasqueTaskArgument]],
+                TasqueTaskListArgument,
+                TasqueTaskFstrArgument,
+                TasqueTaskArgument,
+                Dict[
+                    str,
+                    Union[str, TasqueTaskListArgument, TasqueTaskFstrArgument, TasqueTaskArgument],
+                ],
             ]
         ]
     ] = []

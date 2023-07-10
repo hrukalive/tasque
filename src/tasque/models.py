@@ -56,7 +56,7 @@ class TasqueBaseTask(BaseModel):
     status_data: Optional[Dict[str, Any]] = None
 
 class TasqueSubprocessTask(TasqueBaseTask):
-    type: str = Field("subprocess", const=True)
+    type: Literal["subprocess"]
     cwd: str = "."
     cmd: str = "echo"
     options: Optional[
@@ -79,14 +79,14 @@ class TasqueSubprocessTask(TasqueBaseTask):
     evaled_options: Optional[List[Any]] = None
 
 class TasqueShellTask(TasqueBaseTask):
-    type: str = Field("sh", const=True)
+    type: Literal["sh"]
     cwd: str = "."
     shell: str = "sh"
     script: str = "echo"
     evaled_script: Optional[str] = None
 
 class TasqueFunctionTask(TasqueBaseTask):
-    type: str = Field("function", const=True)
+    type: Literal["function"]
     func: str
     args: Optional[
         List[Union[str, TasqueTaskListArgument, TasqueTaskFstrArgument, TasqueTaskArgument]]

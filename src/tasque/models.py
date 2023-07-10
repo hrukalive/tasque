@@ -50,6 +50,10 @@ class TasqueBaseTask(BaseModel):
     ] = []
     groups: Optional[List[Union[str, TasqueExternalAcquisition]]] = ["default"]
     env: Optional[Dict[str, str]] = {}
+    log: Optional[str] = None
+    result: Optional[Any] = None
+    status: Optional[str] = None
+    status_data: Optional[Dict[str, Any]] = None
 
 class TasqueSubprocessTask(TasqueBaseTask):
     type: str = Field("subprocess", const=True)
@@ -70,12 +74,16 @@ class TasqueSubprocessTask(TasqueBaseTask):
             ]
         ]
     ] = []
+    evaled_cmd: Optional[List[str]] = None
+    evaled_cmdline: Optional[str] = None
+    evaled_options: Optional[List[Any]] = None
 
 class TasqueShellTask(TasqueBaseTask):
     type: str = Field("sh", const=True)
     cwd: str = "."
     shell: str = "sh"
     script: str = "echo"
+    evaled_script: Optional[str] = None
 
 class TasqueFunctionTask(TasqueBaseTask):
     type: str = Field("function", const=True)
@@ -91,6 +99,8 @@ class TasqueFunctionTask(TasqueBaseTask):
             ]
         ]
     ] = []
+    evaled_args: Optional[List[Any]] = None
+    evaled_kwargs: Optional[Dict[str, Any]] = None
 
 class TasqueSpecification(BaseModel):
     name: str

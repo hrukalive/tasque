@@ -9,14 +9,15 @@ from tasque.communicator import TasqueCommunicator
 from tasque.models import (
     TasqueExternalAcquisition,
     TasqueExternalStateDependency,
+    TasqueSpecification,
     TasqueTaskStatus,
 )
 from tasque.util import _LOG, set_logger
 
 
 class TasqueExecutor(object):
-    def __init__(self, id) -> None:
-        self.id = id
+    def __init__(self, eid) -> None:
+        self.eid = eid
         self.communicator = TasqueCommunicator()
         self.tasks = {}
         self.groups = {'default': {'acquired': set(), 'capacity': -1}}
@@ -88,7 +89,7 @@ class TasqueExecutor(object):
     def satisfied(self, tid, dependencies):
         for dependency in dependencies:
             if isinstance(dependency, TasqueExternalStateDependency):
-                if not self.communicator.satisfied(self.id, tid, dependency):
+                if not self.communicator.satisfied(self.eid, tid, dependency):
                     return False
             elif self.tasks[dependency].status != TasqueTaskStatus.SUCCEEDED:
                 return False
@@ -118,7 +119,7 @@ class TasqueExecutor(object):
                     local_satisfied = False
                     break
                 
-            if local_satisfied and self.communicator.acquire_clearance_to_run(self.id, tid, external):
+            if local_satisfied and self.communicator.acquire_clearance_to_run(self.eid, tid, external):
                 self.groups = copied_groups
                 return True
         return False
@@ -164,7 +165,7 @@ class TasqueExecutor(object):
         for gn in group_names:
             if tid not in self.groups[gn]['acquired']:
                 raise Exception("Task {} not in the clear to run.".format(tid))
-        if not self.communicator.is_clear_to_run(self.id, tid, external):
+        if not self.communicator.is_clear_to_run(self.eid, tid, external):
             raise Exception("Task {} not in the clear to run.".format(tid))
 
         self.tasks[tid].status_data['start_time'] = time.time()
@@ -182,7 +183,7 @@ class TasqueExecutor(object):
 
             for group_name in group_names:
                 copied_groups[group_name]['acquired'].discard(tid)
-            if self.communicator.release_acquired(self.id, tid, external):
+            if self.communicator.release_acquired(self.eid, tid, external):
                 self.groups = copied_groups
 
         if 'start_time' in self.tasks[tid].status_data:
@@ -248,29 +249,27 @@ class TasqueExecutor(object):
                 return True
 
     def state_dict(self):
-        save = {
-            'name': self.id,
-            'global_params': self.global_params,
-            'global_env': self.global_env,
-            'root_dir': self.root_dir,
-            'groups': {k: v['capacity'] for k, v in self.groups.items() if k != 'default'},
-            'tasks': {}
-        }
-        for task in self.tasks.values():
-            save['tasks'][task.tid] = task.state_dict()
-        return save
+        return TasqueSpecification(
+            name=self.eid,
+            global_params=self.global_params,
+            global_env=self.global_env,
+            root_dir=self.root_dir,
+            groups={k: v['capacity'] for k, v in self.groups.items() if k != 'default'},
+            tasks={task.tid: task.state_dict() for task in self.tasks.values()}
+        ).dict()
 
-    def load_state_dict(self, save, load_global_params, load_global_env, load_root_dir, load_groups, load_tasks):
+    def load_state_dict(self, state_dict, load_global_params, load_global_env, load_root_dir, load_groups, load_tasks):
+        state_dict = TasqueSpecification.parse_obj(state_dict)
         if load_global_params:
-            self.global_params = save['global_params']
+            self.global_params = state_dict.global_params
         if load_global_env:
-            self.global_env = save['global_env']
+            self.global_env = state_dict.global_env
         if load_root_dir:
-            self.root_dir = save['root_dir']
+            self.root_dir = state_dict.root_dir
         if load_groups:
-            for k, v in save['groups'].items():
+            for k, v in state_dict.groups.items():
                 self.configure_group(k, v)
         if load_tasks:
             for task in self.tasks.values():
-                if task.tid in save['tasks']:
-                    task.load_state_dict(save['tasks'][task.tid])
+                if task.tid in state_dict.tasks:
+                    task.load_state_dict(state_dict.tasks[task.tid])

@@ -85,6 +85,8 @@ class FunctionTask(TasqueTask):
             "task_results": task_results,
             "global_params": self.executor.global_params,
             "env": os.environ | self.executor.global_env | self.env,
+            "communicator": self.executor.communicator,
+            "executor": self.executor,
             "pathlib": pathlib,
         }
         self.evaled_param_args, self.evaled_param_kwargs = eval_arguments(
@@ -157,50 +159,44 @@ class FunctionTask(TasqueTask):
 
     def state_dict(self):
         with self.lock:
-            ret = {
-                "tid": self.tid,
-                "config": TasqueFunctionTask(
-                    name=self.name,
-                    msg=self.msg,
-                    dependencies=self.dependencies,
-                    groups=self.groups,
-                    env=self.env,
-                    func=self.func_name,
-                    args=self.param_args,
-                    kwargs=self.param_kwargs
-                ).dict(),
-                "log": self.get_log(),
-                "result": self.result,
-                "status": self.status.value,
-                "status_data": self.status_data,
-                "evaled_param_args": self.evaled_param_args,
-                "evaled_param_kwargs": self.evaled_param_kwargs,
-            }
-            return ret
+            return TasqueFunctionTask(
+                name=self.name,
+                msg=self.msg,
+                dependencies=self.dependencies,
+                groups=self.groups,
+                env=self.env,
+                func=self.func_name,
+                args=self.param_args,
+                kwargs=self.param_kwargs,
+                log=self.get_log(),
+                result=self.result,
+                status=self.status.value,
+                status_data=self.status_data,
+                evaled_args=self.evaled_param_args,
+                evaled_kwargs=self.evaled_param_kwargs,
+            ).dict()
 
     def load_state_dict(self, state_dict, name_scope=None):
         with self.lock:
-            self.tid = state_dict["tid"]
-
-            config = TasqueFunctionTask.parse_obj(state_dict["config"])
-            self.name = config.name
-            self.msg = config.msg
-            self.dependencies = config.dependencies
-            self.groups = config.groups
-            self.env = config.env
-            self.func_name = config.func
+            state_dict = TasqueFunctionTask.parse_obj(state_dict)
+            self.name = state_dict.name
+            self.msg = state_dict.msg
+            self.dependencies = state_dict.dependencies
+            self.groups = state_dict.groups
+            self.env = state_dict.env
+            self.func_name = state_dict.func
             if name_scope is not None:
-                self.func = name_scope[config.func]
-            self.param_args = config.args
-            self.param_kwargs = config.kwargs
+                self.func = name_scope[state_dict.func]
+            self.param_args = state_dict.args
+            self.param_kwargs = state_dict.kwargs
 
-            if self.log_buf is not None and not self.log_buf.closed:
+            if not self.log_buf.closed:
                 self.log_buf.close()
             self.log_buf = io.StringIO()
-            self.log_buf.write(state_dict["log"])
+            self.log_buf.write(state_dict.log)
 
-            self.result = state_dict["result"]
-            self.status = TasqueTaskStatus(state_dict["status"])
-            self.status_data = state_dict["status_data"]
-            self.evaled_param_args = state_dict["evaled_param_args"]
-            self.evaled_param_kwargs = state_dict["evaled_param_kwargs"]
+            self.result = state_dict.result
+            self.status = TasqueTaskStatus(state_dict.status)
+            self.status_data = state_dict.status_data
+            self.evaled_param_args = state_dict.evaled_args
+            self.evaled_param_kwargs = state_dict.evaled_kwargs

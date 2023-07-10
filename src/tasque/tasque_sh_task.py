@@ -27,6 +27,8 @@ class ShellTask(TasqueTask):
             "task_results": task_results,
             "global_params": self.executor.global_params,
             "env": os.environ | self.executor.global_env | self.env,
+            "communicator": self.executor.communicator,
+            "executor": self.executor,
             "pathlib": pathlib,
         }
         self.evaled_script = eval(f'f"""{self.script}"""', eval_name_scope)
@@ -100,47 +102,40 @@ class ShellTask(TasqueTask):
 
     def state_dict(self):
         with self.lock:
-            ret = {
-                "type": "sh",
-                "tid": self.tid,
-                "config": TasqueShellTask(
-                    name=self.name,
-                    msg=self.msg,
-                    dependencies=self.dependencies,
-                    groups=self.groups,
-                    env=self.env,
-                    cwd=self.cwd,
-                    shell=self.shell,
-                    script=self.script
-                ).dict(),
-                "log": self.get_log(),
-                "result": self.result,
-                "status": self.status.value,
-                "status_data": self.status_data,
-                "evaled_script": self.evaled_script,
-            }
-            return ret
+            return TasqueShellTask(
+                name=self.name,
+                msg=self.msg,
+                dependencies=self.dependencies,
+                groups=self.groups,
+                env=self.env,
+                cwd=self.cwd,
+                shell=self.shell,
+                script=self.script,
+                log=self.get_log(),
+                result=self.result,
+                status=self.status.value,
+                status_data=self.status_data,
+                evaled_script=self.evaled_script,
+            ).dict()
 
     def load_state_dict(self, state_dict):
         with self.lock:
-            self.tid = state_dict["tid"]
-            
-            config = TasqueShellTask.parse_obj(state_dict["config"])
-            self.name = config.name
-            self.msg = config.msg
-            self.dependencies = config.dependencies
-            self.groups = config.groups
-            self.env = config.env
-            self.cwd = config.cwd
-            self.shell = config.shell
-            self.script = config.script
+            state_dict = TasqueShellTask.parse_obj(state_dict)
+            self.name = state_dict.name
+            self.msg = state_dict.msg
+            self.dependencies = state_dict.dependencies
+            self.groups = state_dict.groups
+            self.env = state_dict.env
+            self.cwd = state_dict.cwd
+            self.shell = state_dict.shell
+            self.script = state_dict.script
 
-            if self.log_buf is not None and not self.log_buf.closed:
+            if not self.log_buf.closed:
                 self.log_buf.close()
             self.log_buf = io.StringIO()
-            self.log_buf.write(state_dict["log"])
+            self.log_buf.write(state_dict.log)
 
-            self.result = state_dict["result"]
-            self.status = TasqueTaskStatus(state_dict["status"])
-            self.status_data = state_dict["status_data"]
-            self.evaled_script = state_dict["evaled_script"]
+            self.result = state_dict.result
+            self.status = TasqueTaskStatus(state_dict.status)
+            self.status_data = state_dict.status_data
+            self.evaled_script = state_dict.evaled_script

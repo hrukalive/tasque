@@ -31,7 +31,8 @@ class TasqueTask:
     def close(self):
         self.cancel()
         self.log = self.get_log()
-        self.log_buf.close()
+        if not self.log_buf.closed:
+            self.log_buf.close()
 
     def prepare(self, executor, print_to_stdout=True, skip_if_running=True, reset_failed_status=True):
         if self.status == TasqueTaskStatus.RUNNING and skip_if_running:
@@ -51,7 +52,7 @@ class TasqueTask:
         while self.status == TasqueTaskStatus.RUNNING or self.status == TasqueTaskStatus.PENDING:
             time.sleep(1)
         self.executor = None
-        if self.log_buf is not None:
+        if not self.log_buf.closed:
             self.log_buf.close()
         self.log_buf = io.StringIO()
         self.log = ''

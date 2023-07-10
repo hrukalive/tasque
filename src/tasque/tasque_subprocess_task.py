@@ -38,6 +38,8 @@ class SubprocessTask(TasqueTask):
             "task_results": task_results,
             "global_params": self.executor.global_params,
             "env": os.environ | self.executor.global_env | self.env,
+            "communicator": self.executor.communicator,
+            "executor": self.executor,
             "pathlib": pathlib,
         }
         self.evaled_options = eval_options(self.options, eval_name_scope)
@@ -60,9 +62,9 @@ class SubprocessTask(TasqueTask):
             self.status = TasqueTaskStatus.RUNNING
             self.executor.task_started(self.tid)
 
-            cmd = [self.cmd] + list(map(str, self.evaled_options))
+            self.evaled_cmd = [self.cmd] + list(map(str, self.evaled_options))
             proc = subprocess.Popen(
-                cmd,
+                self.evaled_cmd,
                 cwd=str(pathlib.Path(self.executor.root_dir).joinpath(self.cwd).resolve()),
                 env={**os.environ, **self.executor.global_env, **self.env},
                 bufsize=1,
@@ -70,8 +72,8 @@ class SubprocessTask(TasqueTask):
                 stderr=subprocess.STDOUT,
                 universal_newlines=True,
             )
-            self.cmd_line = subprocess.list2cmdline(cmd)
-            _LOG("Executing: {}".format(self.cmd_line), "info", self.log_buf)
+            self.evaled_cmdline = subprocess.list2cmdline(self.evaled_cmd)
+            _LOG("Executing: {}".format(self.evaled_cmdline), "info", self.log_buf)
 
             def read_stdout(size=-1):
                 events = select.select([proc.stdout], [], [], 1)[0]
@@ -110,51 +112,44 @@ class SubprocessTask(TasqueTask):
 
     def state_dict(self):
         with self.lock:
-            ret = {
-                "type": 'subprocess',
-                "tid": self.tid,
-                "config": TasqueSubprocessTask(
-                    name=self.name,
-                    msg=self.msg,
-                    dependencies=self.dependencies,
-                    groups=self.groups,
-                    env=self.env,
-                    cwd=self.cwd,
-                    cmd=self.cmd,
-                    options=self.options,
-                ).dict(),
-                "log": self.get_log(),
-                "result": self.result,
-                "status": self.status.value,
-                "status_data": self.status_data,
-                "evaled_cmd": self.evaled_cmd,
-                "evaled_cmdline": self.evaled_cmdline,
-                "evaled_options": self.evaled_options,
-            }
-            return ret
+            return TasqueSubprocessTask(
+                name=self.name,
+                msg=self.msg,
+                dependencies=self.dependencies,
+                groups=self.groups,
+                env=self.env,
+                cwd=self.cwd,
+                cmd=self.cmd,
+                options=self.options,
+                log=self.get_log(),
+                result=self.result,
+                status=self.status.value,
+                status_data=self.status_data,
+                evaled_cmd=self.evaled_cmd,
+                evaled_cmdline=self.evaled_cmdline,
+                evaled_options=self.evaled_options,
+            ).dict()
 
     def load_state_dict(self, state_dict):
         with self.lock:
-            self.tid = state_dict["tid"]
+            state_dict = TasqueSubprocessTask.parse_obj(state_dict)
+            self.name = state_dict.name
+            self.msg = state_dict.msg
+            self.dependencies = state_dict.dependencies
+            self.groups = state_dict.groups
+            self.env = state_dict.env
+            self.cwd = state_dict.cwd
+            self.cmd = state_dict.cmd
+            self.options = state_dict.options
 
-            config = TasqueSubprocessTask.parse_obj(state_dict["config"])
-            self.name = config.name
-            self.msg = config.msg
-            self.dependencies = config.dependencies
-            self.groups = config.groups
-            self.env = config.env
-            self.cwd = config.cwd
-            self.cmd = config.cmd
-            self.options = config.options
-
-            if self.log_buf is not None and not self.log_buf.closed:
+            if not self.log_buf.closed:
                 self.log_buf.close()
             self.log_buf = io.StringIO()
-            self.log_buf.write(state_dict["log"])
+            self.log_buf.write(state_dict.log)
 
-            self.result = state_dict["result"]
-            self.status = TasqueTaskStatus(state_dict["status"])
-            self.status_data = state_dict["status_data"]
-            self.evaled_cmd = state_dict["evaled_cmd"]
-            self.evaled_cmdline = state_dict["evaled_cmdline"]
-            self.evaled_options = state_dict["evaled_options"]
+            self.result = state_dict.result
+            self.status = TasqueTaskStatus(state_dict.status)
+            self.status_data = state_dict.status_data
+            self.evaled_cmd = state_dict.evaled_cmd
+            self.evaled_cmdline = state_dict.evaled_cmdline
+            self.evaled_options = state_dict.evaled_options

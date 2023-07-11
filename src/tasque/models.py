@@ -1,6 +1,6 @@
 import os
 from enum import Enum
-from typing import Any, Dict, List, Literal, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 from pydantic import BaseModel, Extra, Field
 
@@ -22,17 +22,17 @@ class TasqueTaskArgument(BaseModel):
         extra = Extra.forbid
 
 class TasqueTaskFstrArgument(BaseModel):
-    type: Literal["fstr"]
+    type: str = Field("fstr", const=True)
     expr: str
     cond: Optional[str] = "True"
 
 class TasqueTaskListArgument(BaseModel):
-    type: Literal["list"]
+    type: str = Field("list", const=True)
     expr: str
     cond: Optional[str] = "True"
 
 class TasqueTaskDictArgument(BaseModel):
-    type: Literal["dict"]
+    type: str = Field("dict", const=True)
     expr: str
     cond: Optional[str] = "True"
 
@@ -56,7 +56,7 @@ class TasqueBaseTask(BaseModel):
     status_data: Optional[Dict[str, Any]] = None
 
 class TasqueSubprocessTask(TasqueBaseTask):
-    type: Literal["subprocess"]
+    type: str = Field("subprocess", const=True)
     cwd: str = "."
     cmd: str = "echo"
     options: Optional[
@@ -79,14 +79,14 @@ class TasqueSubprocessTask(TasqueBaseTask):
     evaled_options: Optional[List[Any]] = None
 
 class TasqueShellTask(TasqueBaseTask):
-    type: Literal["sh"]
+    type: str = Field("sh", const=True)
     cwd: str = "."
     shell: str = "sh"
     script: str = "echo"
     evaled_script: Optional[str] = None
 
 class TasqueFunctionTask(TasqueBaseTask):
-    type: Literal["function"]
+    type: str = Field("function", const=True)
     func: str
     args: Optional[
         List[Union[str, TasqueTaskListArgument, TasqueTaskFstrArgument, TasqueTaskArgument]]

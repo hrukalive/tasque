@@ -1,6 +1,6 @@
 import os
 from enum import Enum
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel, Extra, Field
 
@@ -22,17 +22,17 @@ class TasqueTaskArgument(BaseModel):
         extra = Extra.forbid
 
 class TasqueTaskFstrArgument(BaseModel):
-    type: str = Field("fstr", const=True)
+    type: Literal["fstr"]
     expr: str
     cond: Optional[str] = "True"
 
 class TasqueTaskListArgument(BaseModel):
-    type: str = Field("list", const=True)
+    type: Literal["list"]
     expr: str
     cond: Optional[str] = "True"
 
 class TasqueTaskDictArgument(BaseModel):
-    type: str = Field("dict", const=True)
+    type: Literal["dict"]
     expr: str
     cond: Optional[str] = "True"
 

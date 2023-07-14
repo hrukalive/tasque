@@ -41,6 +41,7 @@ class SubprocessTask(TasqueTask):
             "communicator": self.executor.communicator,
             "executor": self.executor,
             "pathlib": pathlib,
+            "TasqueTaskStatus": TasqueTaskStatus,
         }
         self.evaled_options = eval_options(self.options, eval_name_scope)
 

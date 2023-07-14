@@ -30,6 +30,7 @@ class ShellTask(TasqueTask):
             "communicator": self.executor.communicator,
             "executor": self.executor,
             "pathlib": pathlib,
+            "TasqueTaskStatus": TasqueTaskStatus,
         }
         self.evaled_script = eval(f'f"""{self.script}"""', eval_name_scope)
 

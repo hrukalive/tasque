@@ -119,7 +119,7 @@ class ShellTask(TasqueTask):
                 evaled_script=self.evaled_script,
             ).dict()
 
-    def load_state_dict(self, state_dict):
+    def load_state_dict(self, state_dict, name_scope=None):
         with self.lock:
             state_dict = TasqueShellTask.parse_obj(state_dict)
             self.name = state_dict.name

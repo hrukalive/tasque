@@ -131,7 +131,7 @@ class SubprocessTask(TasqueTask):
                 evaled_options=self.evaled_options,
             ).dict()
 
-    def load_state_dict(self, state_dict):
+    def load_state_dict(self, state_dict, name_scope=None):
         with self.lock:
             state_dict = TasqueSubprocessTask.parse_obj(state_dict)
             self.name = state_dict.name

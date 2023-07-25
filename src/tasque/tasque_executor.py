@@ -258,8 +258,10 @@ class TasqueExecutor(object):
             tasks={task.tid: task.state_dict() for task in self.tasks.values()}
         ).dict()
 
-    def load_state_dict(self, state_dict, load_global_params, load_global_env, load_root_dir, load_groups, load_tasks):
+    def load_state_dict(self, state_dict, load_name, load_global_params, load_global_env, load_root_dir, load_groups, load_tasks, name_scope=None):
         state_dict = TasqueSpecification.parse_obj(state_dict)
+        if load_name:
+            self.eid = state_dict.name
         if load_global_params:
             self.global_params = state_dict.global_params
         if load_global_env:
@@ -272,4 +274,4 @@ class TasqueExecutor(object):
         if load_tasks:
             for task in self.tasks.values():
                 if task.tid in state_dict.tasks:
-                    task.load_state_dict(state_dict.tasks[task.tid])
+                    task.load_state_dict(state_dict.tasks[task.tid], name_scope)

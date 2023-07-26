@@ -146,17 +146,19 @@ class FunctionTask(TasqueTask):
             self.status = TasqueTaskStatus.FAILED
             self.executor.task_failed(self.tid)
             _LOG(e, "error", self.log_buf)
-            return None
-        try:
-            thread.raise_exc()
-        except Exception:
-            self.status = TasqueTaskStatus.FAILED
-            self.executor.task_failed(self.tid)
+        else:
+            try:
+                thread.raise_exc()
+            except Exception:
+                self.status = TasqueTaskStatus.FAILED
+                self.executor.task_failed(self.tid)
+            else:
+                self.result = thread.result
+                self.status = TasqueTaskStatus.SUCCEEDED
+                self.executor.task_succeeded(self.tid)
+                return thread.result
             return -1
-        self.result = thread.result
-        self.status = TasqueTaskStatus.SUCCEEDED
-        self.executor.task_succeeded(self.tid)
-        return thread.result
+        return None
 
     def state_dict(self):
         with self.lock:

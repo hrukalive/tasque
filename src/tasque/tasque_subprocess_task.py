@@ -101,15 +101,16 @@ class SubprocessTask(TasqueTask):
             self.status = TasqueTaskStatus.FAILED
             self.executor.task_failed(self.tid)
             _LOG(e, "error", self.log_buf)
-            return None
-        self.result = result
-        if result == 0:
-            self.status = TasqueTaskStatus.SUCCEEDED
-            self.executor.task_succeeded(self.tid)
         else:
-            self.status = TasqueTaskStatus.FAILED
-            self.executor.task_failed(self.tid)
-        return result
+            self.result = result
+            if result == 0:
+                self.status = TasqueTaskStatus.SUCCEEDED
+                self.executor.task_succeeded(self.tid)
+            else:
+                self.status = TasqueTaskStatus.FAILED
+                self.executor.task_failed(self.tid)
+            return result
+        return None
 
     def state_dict(self):
         with self.lock:

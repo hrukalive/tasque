@@ -42,6 +42,10 @@ class TasqueExternalStateDependency(BaseModel):
 class TasqueExternalAcquisition(BaseModel):
     key: str
 
+class TasqueRetry(BaseModel):
+    count: int = 0
+    wait: int = 1
+
 class TasqueBaseTask(BaseModel):
     name: str
     msg: Optional[str] = ""
@@ -49,6 +53,7 @@ class TasqueBaseTask(BaseModel):
         Union[int, TasqueExternalStateDependency]
     ] = []
     groups: Optional[List[Union[str, TasqueExternalAcquisition]]] = ["default"]
+    retry: Optional[TasqueRetry] = TasqueRetry()
     env: Optional[Dict[str, str]] = {}
     log: Optional[str] = None
     result: Optional[Any] = None

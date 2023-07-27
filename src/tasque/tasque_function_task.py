@@ -6,7 +6,7 @@ import sys
 import threading
 import traceback
 
-from tasque.models import TasqueFunctionTask, TasqueTaskStatus
+from tasque.models import TasqueFunctionTask, TasqueRetry, TasqueTaskStatus
 from tasque.std_redirector import redirect, stop_redirect
 from tasque.tasque_task import TasqueTask
 from tasque.util import _LOG, eval_arguments
@@ -69,9 +69,18 @@ class FunctionTask(TasqueTask):
         param_kwargs={},
         groups=["default"],
         dependencies=[],
+        retry=TasqueRetry(),
         env={},
     ):
-        super().__init__(tid, name, msg, dependencies, groups, env)
+        super().__init__(
+            tid=tid,
+            name=name,
+            msg=msg,
+            groups=groups,
+            dependencies=dependencies,
+            retry=retry,
+            env=env
+        )
         self.func_name = func_name
         self.func = func
         self.param_args = param_args
@@ -165,8 +174,9 @@ class FunctionTask(TasqueTask):
             return TasqueFunctionTask(
                 name=self.name,
                 msg=self.msg,
-                dependencies=self.dependencies,
                 groups=self.groups,
+                dependencies=self.dependencies,
+                retry=self.retry,
                 env=self.env,
                 func=self.func_name,
                 args=self.param_args,
@@ -184,8 +194,9 @@ class FunctionTask(TasqueTask):
             state_dict = TasqueFunctionTask.parse_obj(state_dict)
             self.name = state_dict.name
             self.msg = state_dict.msg
-            self.dependencies = state_dict.dependencies
             self.groups = state_dict.groups
+            self.dependencies = state_dict.dependencies
+            self.retry = state_dict.retry
             self.env = state_dict.env
             self.func_name = state_dict.func
             if name_scope is not None:

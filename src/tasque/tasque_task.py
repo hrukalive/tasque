@@ -1,20 +1,36 @@
 import io
 import threading
 import time
+from typing import Dict, List, Union
 
-from tasque.models import TasqueTaskStatus
+from tasque.models import (
+    TasqueExternalAcquisition,
+    TasqueExternalStateDependency,
+    TasqueRetry,
+    TasqueTaskStatus,
+)
 from tasque.util import _LOG
 
 
 class TasqueTask:
-    def __init__(self, tid, name, msg, dependencies, groups, env):
+    def __init__(
+        self,
+        tid: int,
+        name: str,
+        msg: str,
+        groups: List[Union[str, TasqueExternalAcquisition]],
+        dependencies: List[Union[int, TasqueExternalStateDependency]],
+        retry: TasqueRetry,
+        env: Dict[str, str]
+    ):
         self.executor = None
 
         self.tid = tid
         self.name = name
         self.msg = msg
-        self.dependencies = dependencies
         self.groups = groups
+        self.dependencies = dependencies
+        self.retry = retry
         self.env = env
 
         self.cancel_token = threading.Event()

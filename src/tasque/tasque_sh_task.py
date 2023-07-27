@@ -6,16 +6,34 @@ import subprocess
 import sys
 import tempfile
 
-from tasque.models import TasqueShellTask, TasqueTaskStatus
+from tasque.models import TasqueRetry, TasqueShellTask, TasqueTaskStatus
 from tasque.tasque_task import TasqueTask
 from tasque.util import _LOG
 
 
 class ShellTask(TasqueTask):
     def __init__(
-        self, tid, name, msg, cwd, script, shell="sh", groups=["default"], dependencies=[], env={}
+        self,
+        tid,
+        name,
+        msg,
+        cwd,
+        script,
+        shell="sh",
+        groups=["default"],
+        dependencies=[],
+        retry=TasqueRetry(),
+        env={}
     ):
-        super().__init__(tid, name, msg, dependencies, groups, env)
+        super().__init__(
+            tid=tid,
+            name=name,
+            msg=msg,
+            groups=groups,
+            dependencies=dependencies,
+            retry=retry,
+            env=env
+        )
         self.cwd = cwd
         self.shell = shell
         self.script = script
@@ -107,8 +125,9 @@ class ShellTask(TasqueTask):
             return TasqueShellTask(
                 name=self.name,
                 msg=self.msg,
-                dependencies=self.dependencies,
                 groups=self.groups,
+                dependencies=self.dependencies,
+                retry=self.retry,
                 env=self.env,
                 cwd=self.cwd,
                 shell=self.shell,
@@ -125,8 +144,9 @@ class ShellTask(TasqueTask):
             state_dict = TasqueShellTask.parse_obj(state_dict)
             self.name = state_dict.name
             self.msg = state_dict.msg
-            self.dependencies = state_dict.dependencies
             self.groups = state_dict.groups
+            self.dependencies = state_dict.dependencies
+            self.retry = state_dict.retry
             self.env = state_dict.env
             self.cwd = state_dict.cwd
             self.shell = state_dict.shell

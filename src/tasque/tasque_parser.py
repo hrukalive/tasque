@@ -27,6 +27,7 @@ def tasque_parse(task_spec, communicator, name_scope={}):
                 spec.options,
                 spec.groups,
                 spec.dependencies,
+                spec.retry,
                 spec.env,
             )
             if spec.evaled_cmd:
@@ -45,6 +46,7 @@ def tasque_parse(task_spec, communicator, name_scope={}):
                 spec.shell,
                 spec.groups,
                 spec.dependencies,
+                spec.retry,
                 spec.env,
             )
             if spec.evaled_script:
@@ -60,6 +62,7 @@ def tasque_parse(task_spec, communicator, name_scope={}):
                 spec.kwargs,
                 spec.groups,
                 spec.dependencies,
+                spec.retry,
                 spec.env,
             )
             if spec.evaled_args:

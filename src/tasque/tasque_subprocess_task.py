@@ -6,7 +6,7 @@ import subprocess
 import sys
 from itertools import chain
 
-from tasque.models import TasqueSubprocessTask, TasqueTaskStatus
+from tasque.models import TasqueRetry, TasqueSubprocessTask, TasqueTaskStatus
 from tasque.tasque_task import TasqueTask
 from tasque.util import _LOG, eval_options
 
@@ -22,9 +22,18 @@ class SubprocessTask(TasqueTask):
         options=[],
         groups=["default"],
         dependencies=[],
+        retry=TasqueRetry(),
         env={},
     ):
-        super().__init__(tid, name, msg, dependencies, groups, env)
+        super().__init__(
+            tid=tid,
+            name=name,
+            msg=msg,
+            groups=groups,
+            dependencies=dependencies,
+            retry=retry,
+            env=env
+        )
         self.cwd = cwd
         self.cmd = cmd
         self.options = options
@@ -117,8 +126,9 @@ class SubprocessTask(TasqueTask):
             return TasqueSubprocessTask(
                 name=self.name,
                 msg=self.msg,
-                dependencies=self.dependencies,
                 groups=self.groups,
+                dependencies=self.dependencies,
+                retry=self.retry,
                 env=self.env,
                 cwd=self.cwd,
                 cmd=self.cmd,
@@ -137,8 +147,9 @@ class SubprocessTask(TasqueTask):
             state_dict = TasqueSubprocessTask.parse_obj(state_dict)
             self.name = state_dict.name
             self.msg = state_dict.msg
-            self.dependencies = state_dict.dependencies
             self.groups = state_dict.groups
+            self.dependencies = state_dict.dependencies
+            self.retry = state_dict.retry
             self.env = state_dict.env
             self.cwd = state_dict.cwd
             self.cmd = state_dict.cmd

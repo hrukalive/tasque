@@ -13,6 +13,7 @@ class TasqueTaskStatus(str, Enum):
     SUCCEEDED = 'succeeded'
     FAILED = 'failed'
     CANCELLED = 'cancelled'
+    PAUSED = 'paused'
 
 class TasqueTaskArgument(BaseModel):
     expr: str

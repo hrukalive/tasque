@@ -18,16 +18,17 @@ from tasque.util import _LOG, set_logger
 class TasqueExecutor(object):
     def __init__(self, eid) -> None:
         self.eid = eid
+        self.paused = False
         self.communicator = TasqueCommunicator()
         self.tasks = {}
-        self.groups = {'default': {'acquired': set(), 'capacity': -1}}
+        self.groups = {"default": {"acquired": set(), "capacity": -1}}
         self.global_lock = threading.Lock()
         self.executor: concurrent.futures.Executor = None
         self.futures = {}
         self.tid_graph: nx.DiGraph = None
         self.global_params = {}
         self.global_env = {}
-        self.root_dir = '/'
+        self.root_dir = "/"
 
     def __enter__(self):
         return self
@@ -47,7 +48,7 @@ class TasqueExecutor(object):
             task.close()
 
     def configure_group(self, name, capacity):
-        self.groups[name] = {'acquired': set(), 'capacity': capacity}
+        self.groups[name] = {"acquired": set(), "capacity": capacity}
 
     def add_task(self, task):
         if task.tid == 0:
@@ -61,8 +62,7 @@ class TasqueExecutor(object):
         for task in self.tasks.values():
             for t_g in task.groups:
                 if isinstance(t_g, str) and t_g not in self.groups:
-                    raise Exception("Task group {} not configured".format(
-                        task.group))
+                    raise Exception("Task group {} not configured".format(task.group))
             for dep in task.dependencies:
                 if isinstance(dep, int) and dep not in self.tasks:
                     raise Exception("Task {} not found".format(dep))
@@ -71,7 +71,7 @@ class TasqueExecutor(object):
         for task in self.tasks.values():
             self.tid_graph.add_node(task.tid)
         try:
-            nx.find_cycle(self.tid_graph, orientation='original')
+            nx.find_cycle(self.tid_graph, orientation="original")
             raise Exception("Cycle detected in task graph")
         except nx.exception.NetworkXNoCycle:
             pass
@@ -81,12 +81,15 @@ class TasqueExecutor(object):
 
         for task in self.tasks.values():
             task.prepare(self, print_to_stdout, skip_if_running, reset_failed_status)
-
         if self.executor is None:
-            self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=len(self.tasks) * 2, thread_name_prefix="tasque")
+            self.executor = concurrent.futures.ThreadPoolExecutor(
+                max_workers=len(self.tasks) * 2, thread_name_prefix="tasque"
+            )
         return self.tid_graph
 
     def satisfied(self, tid, dependencies):
+        if self.paused:
+            return False
         for dependency in dependencies:
             if isinstance(dependency, TasqueExternalStateDependency):
                 if not self.communicator.satisfied(self.eid, tid, dependency):
@@ -98,19 +101,20 @@ class TasqueExecutor(object):
     # If all dependencies are satisfied, then this task is ready to run.
     # Check for clearance to run in the group.
     def acquire_clearance_to_run(self, tid, groups):
+        if self.paused:
+            return False
         with self.global_lock and self.communicator.lock:
             copied_groups = self.groups.copy()
-            group_names, external = [], []
+            group_names, externals = [], []
             for g in groups:
                 if isinstance(g, TasqueExternalAcquisition):
-                    external.append(g)
+                    externals.append(g)
                 elif isinstance(g, str):
                     group_names.append(g)
-                    
             local_satisfied = True
             for group_name in group_names:
-                acquired = copied_groups[group_name]['acquired']
-                capacity = copied_groups[group_name]['capacity']
+                acquired = copied_groups[group_name]["acquired"]
+                capacity = copied_groups[group_name]["capacity"]
                 if tid in acquired:
                     continue
                 elif capacity == -1 or len(acquired) < capacity:
@@ -118,11 +122,16 @@ class TasqueExecutor(object):
                 else:
                     local_satisfied = False
                     break
-                
-            if local_satisfied and self.communicator.acquire_clearance_to_run(self.eid, tid, external):
+            if local_satisfied and self.communicator.acquire_clearance_to_run(self.eid, tid, externals):
                 self.groups = copied_groups
                 return True
         return False
+
+    def pause(self):
+        self.paused = True
+
+    def unpause(self):
+        self.paused = False
 
     def cancel(self, tid=None):
         if not tid:
@@ -153,7 +162,14 @@ class TasqueExecutor(object):
         return self.tasks[tid].get_result()
 
     def get_status(self, tid):
-        return self.tasks[tid].status, self.tasks[tid].status_data
+        status = self.tasks[tid].status
+        if self.paused and (
+            status is TasqueTaskStatus.CREATED
+            or status is TasqueTaskStatus.PREPARED
+            or status is TasqueTaskStatus.PENDING
+        ):
+            status = TasqueTaskStatus.PAUSED
+        return status, self.tasks[tid].status_data
 
     def task_started(self, tid):
         group_names, external = [], []
@@ -163,13 +179,12 @@ class TasqueExecutor(object):
             elif isinstance(g, str):
                 group_names.append(g)
         for gn in group_names:
-            if tid not in self.groups[gn]['acquired']:
+            if tid not in self.groups[gn]["acquired"]:
                 raise Exception("Task {} not in the clear to run.".format(tid))
         if not self.communicator.is_clear_to_run(self.eid, tid, external):
             raise Exception("Task {} not in the clear to run.".format(tid))
-
-        self.tasks[tid].status_data['start_time'] = time.time()
-        _LOG("Task {} started".format(tid), 'info')
+        self.tasks[tid].status_data["start_time"] = time.time()
+        _LOG("Task {} started".format(tid), "info")
 
     def __task_end(self, tid):
         with self.global_lock and self.communicator.lock:
@@ -180,34 +195,32 @@ class TasqueExecutor(object):
                     external.append(g)
                 elif isinstance(g, str):
                     group_names.append(g)
-
             for group_name in group_names:
-                copied_groups[group_name]['acquired'].discard(tid)
+                copied_groups[group_name]["acquired"].discard(tid)
             if self.communicator.release_acquired(self.eid, tid, external):
                 self.groups = copied_groups
-
-        if 'start_time' in self.tasks[tid].status_data:
+        if "start_time" in self.tasks[tid].status_data:
             end_time = time.time()
-            self.tasks[tid].status_data['end_time'] = end_time
-            self.tasks[tid].status_data['time_elapsed'] = end_time - self.tasks[tid].status_data['start_time']
+            self.tasks[tid].status_data["end_time"] = end_time
+            self.tasks[tid].status_data["time_elapsed"] = end_time - self.tasks[tid].status_data["start_time"]
 
     def task_succeeded(self, tid):
         self.__task_end(tid)
-        _LOG("Task {} succeeded".format(tid), 'info')
+        _LOG("Task {} succeeded".format(tid), "info")
 
     def task_failed(self, tid):
         self.__task_end(tid)
-        _LOG("Task {} failed".format(tid), 'warn')
+        _LOG("Task {} failed".format(tid), "warn")
         self.cancel(tid)
 
     def task_skipped(self, tid):
         self.__task_end(tid)
-        _LOG("Task {} skipped".format(tid), 'info')
+        _LOG("Task {} skipped".format(tid), "info")
         self.cancel(tid)
 
     def task_cancelled(self, tid):
         self.__task_end(tid)
-        _LOG("Task {} cancelled".format(tid), 'info')
+        _LOG("Task {} cancelled".format(tid), "info")
 
     def execute(self):
         for task in self.tasks.values():
@@ -232,6 +245,9 @@ class TasqueExecutor(object):
             if task.status == TasqueTaskStatus.RUNNING or task.status == TasqueTaskStatus.PENDING:
                 return True
 
+    def is_paused(self):
+        return self.paused
+
     def is_successful(self):
         for task in self.tasks.values():
             if task.status != TasqueTaskStatus.SUCCEEDED:
@@ -254,12 +270,23 @@ class TasqueExecutor(object):
             global_params=self.global_params,
             global_env=self.global_env,
             root_dir=self.root_dir,
-            groups={k: v['capacity'] for k, v in self.groups.items() if k != 'default'},
-            tasks={task.tid: task.state_dict() for task in self.tasks.values()}
+            groups={k: v["capacity"] for k, v in self.groups.items() if k != "default"},
+            tasks={task.tid: task.state_dict() for task in self.tasks.values()},
         ).dict()
 
-    def load_state_dict(self, state_dict, load_name, load_global_params, load_global_env, load_root_dir, load_groups, load_tasks, name_scope=None):
-        state_dict = TasqueSpecification.parse_obj(state_dict)
+    def load_state_dict(
+        self,
+        state_dict,
+        load_name,
+        load_global_params,
+        load_global_env,
+        load_root_dir,
+        load_groups,
+        load_tasks,
+        name_scope=None,
+    ):
+        if isinstance(state_dict, dict):
+            state_dict = TasqueSpecification.parse_obj(state_dict)
         if load_name:
             self.eid = state_dict.name
         if load_global_params:

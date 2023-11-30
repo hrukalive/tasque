@@ -264,15 +264,16 @@ class TasqueExecutor(object):
             if task.status == TasqueTaskStatus.CANCELLED:
                 return True
 
-    def state_dict(self):
-        return TasqueSpecification(
+    def state_dict(self, json=False):
+        ret = TasqueSpecification(
             name=self.eid,
             global_params=self.global_params,
             global_env=self.global_env,
             root_dir=self.root_dir,
             groups={k: v["capacity"] for k, v in self.groups.items() if k != "default"},
             tasks={task.tid: task.state_dict() for task in self.tasks.values()},
-        ).dict()
+        )
+        return ret.json() if json else ret.dict()
 
     def load_state_dict(
         self,

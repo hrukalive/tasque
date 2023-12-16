@@ -99,9 +99,11 @@ class FunctionTask(TasqueTask):
             "pathlib": pathlib,
             "TasqueTaskStatus": TasqueTaskStatus,
         }
+        _LOG("Evaluating arguments ...", "info", self.log_buf)
         self.evaled_param_args, self.evaled_param_kwargs = eval_arguments(
             self.param_args, self.param_kwargs, eval_name_scope
         )
+        _LOG("Evaluated arguments", "info", self.log_buf)
 
     def reset(self):
         TasqueTask.reset(self)

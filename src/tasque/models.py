@@ -109,7 +109,7 @@ class TasqueFunctionTask(TasqueBaseTask):
     evaled_kwargs: Optional[Dict[str, Any]] = None
 
 class TasqueSpecification(BaseModel):
-    name: str
+    name: Optional[str] = "default"
     global_params: Optional[Dict[str, Any]] = {}
     global_env: Optional[Dict[str, str]] = {}
     root_dir: Optional[str] = os.environ.get("APP_SRC_DIR", ".")

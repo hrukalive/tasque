@@ -52,7 +52,9 @@ class SubprocessTask(TasqueTask):
             "pathlib": pathlib,
             "TasqueTaskStatus": TasqueTaskStatus,
         }
+        _LOG("Evaluating options ...", "info", self.log_buf)
         self.evaled_options = eval_options(self.options, eval_name_scope)
+        _LOG("Evaluated options", "info", self.log_buf)
 
     def reset(self):
         TasqueTask.reset(self)

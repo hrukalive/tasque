@@ -50,7 +50,9 @@ class ShellTask(TasqueTask):
             "pathlib": pathlib,
             "TasqueTaskStatus": TasqueTaskStatus,
         }
+        _LOG("Evaluating script ...", "info", self.log_buf)
         self.evaled_script = eval(f'f"""{self.script}"""', eval_name_scope)
+        _LOG("Evaluated script", "info", self.log_buf)
 
     def reset(self):
         TasqueTask.reset(self)

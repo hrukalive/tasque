@@ -273,7 +273,7 @@ class TasqueExecutor(object):
             groups={k: v["capacity"] for k, v in self.groups.items() if k != "default"},
             tasks={task.tid: task.state_dict() for task in self.tasks.values()},
         )
-        return ret.json() if json else ret.dict()
+        return ret.json() if json else ret.dict(exclude_none=True)
 
     def load_state_dict(
         self,
@@ -289,17 +289,20 @@ class TasqueExecutor(object):
         if isinstance(state_dict, dict):
             state_dict = TasqueSpecification.parse_obj(state_dict)
         if load_name:
+            assert state_dict.name, "Field 'name' is required in state_dict"
             self.eid = state_dict.name
         if load_global_params:
-            self.global_params = state_dict.global_params
+            self.global_params = state_dict.global_params or {}
         if load_global_env:
-            self.global_env = state_dict.global_env
+            self.global_env = state_dict.global_env or {}
         if load_root_dir:
+            assert state_dict.root_dir, "Field 'root_dir' is required in state_dict"
             self.root_dir = state_dict.root_dir
         if load_groups:
-            for k, v in state_dict.groups.items():
+            for k, v in (state_dict.groups or {}).items():
                 self.configure_group(k, v)
         if load_tasks:
+            assert state_dict.tasks, "Field 'tasks' is required in state_dict"
             for task in self.tasks.values():
-                if task.tid in state_dict.tasks:
+                if state_dict.tasks and task.tid in state_dict.tasks:
                     task.load_state_dict(state_dict.tasks[task.tid], name_scope)

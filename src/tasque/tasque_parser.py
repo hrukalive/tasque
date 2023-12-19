@@ -17,18 +17,20 @@ def tasque_parse(task_spec, communicator, name_scope={}):
     for k, v in task_spec.groups.items():
         executor.configure_group(k, v)
     for tid, spec in task_spec.tasks.items():
+        assert spec.name is not None and spec.name != "", f"Empty name for task {tid}"
         if isinstance(spec, TasqueSubprocessTask):
+            assert spec.cmd is not None and spec.cmd != "", f"Empty cmd for task {spec.name}"
             task = SubprocessTask(
                 tid,
                 spec.name,
-                spec.msg,
-                spec.cwd,
+                spec.msg or "",
+                spec.cwd or ".",
                 spec.cmd,
-                spec.options,
-                spec.groups,
-                spec.dependencies,
+                spec.options or [],
+                spec.groups or ["default"],
+                spec.dependencies or [],
                 spec.retry,
-                spec.env,
+                spec.env or {},
             )
             if spec.evaled_cmd:
                 task.evaled_cmd = spec.evaled_cmd
@@ -37,33 +39,35 @@ def tasque_parse(task_spec, communicator, name_scope={}):
             if spec.evaled_options:
                 task.evaled_options = spec.evaled_options
         elif isinstance(spec, TasqueShellTask):
+            assert spec.script is not None and spec.script != "", f"Empty script for task {spec.name}"
             task = ShellTask(
                 tid,
                 spec.name,
-                spec.msg,
-                spec.cwd,
+                spec.msg or "",
+                spec.cwd or ".",
                 spec.script,
-                spec.shell,
-                spec.groups,
-                spec.dependencies,
+                spec.shell or "sh",
+                spec.groups or ["default"],
+                spec.dependencies or [],
                 spec.retry,
-                spec.env,
+                spec.env or {},
             )
             if spec.evaled_script:
                 task.evaled_script = spec.evaled_script
         elif isinstance(spec, TasqueFunctionTask):
+            assert spec.func is not None and spec.func != "", f"Empty func for task {spec.name}"
             task = FunctionTask(
                 tid,
                 spec.name,
-                spec.msg,
+                spec.msg or "",
                 spec.func,
                 name_scope[spec.func],
-                spec.args,
-                spec.kwargs,
-                spec.groups,
-                spec.dependencies,
+                spec.args or [],
+                spec.kwargs or [],
+                spec.groups or ["default"],
+                spec.dependencies or [],
                 spec.retry,
-                spec.env,
+                spec.env or {},
             )
             if spec.evaled_args:
                 task.evaled_args = spec.evaled_args

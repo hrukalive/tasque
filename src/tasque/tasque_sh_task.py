@@ -139,7 +139,7 @@ class ShellTask(TasqueTask):
                 status=self.status.value,
                 status_data=self.status_data,
                 evaled_script=self.evaled_script,
-            ).dict()
+            ).dict(exclude_none=True)
 
     def load_state_dict(self, state_dict, name_scope=None):
         with self.lock:

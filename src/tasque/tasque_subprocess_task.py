@@ -4,7 +4,7 @@ import pathlib
 import select
 import subprocess
 import sys
-from itertools import chain
+import time
 
 from tasque.models import TasqueRetry, TasqueSubprocessTask, TasqueTaskStatus
 from tasque.tasque_task import TasqueTask
@@ -97,6 +97,9 @@ class SubprocessTask(TasqueTask):
                         sys.stdout.write(line)
             while proc.poll() is None:
                 if self.cancel_token.is_set():
+                    proc.send_signal(subprocess.signal.SIGINT)
+                    _LOG(f"Process in {self.tid} interrupted", "info", self.log_buf)
+                    time.sleep(5)
                     proc.kill()
                     _LOG(f"Process in {self.tid} killed", "info", self.log_buf)
                     read_stdout()
@@ -142,7 +145,7 @@ class SubprocessTask(TasqueTask):
                 evaled_cmd=self.evaled_cmd,
                 evaled_cmdline=self.evaled_cmdline,
                 evaled_options=self.evaled_options,
-            ).dict()
+            ).dict(exclude_none=True)
 
     def load_state_dict(self, state_dict, name_scope=None):
         with self.lock:

@@ -189,7 +189,7 @@ class FunctionTask(TasqueTask):
                 status_data=self.status_data,
                 evaled_args=self.evaled_param_args,
                 evaled_kwargs=self.evaled_param_kwargs,
-            ).dict()
+            ).dict(exclude_none=True)
 
     def load_state_dict(self, state_dict, name_scope=None):
         with self.lock:

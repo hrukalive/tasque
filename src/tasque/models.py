@@ -48,23 +48,23 @@ class TasqueRetry(BaseModel):
     wait: int = 1
 
 class TasqueBaseTask(BaseModel):
-    name: str
-    msg: Optional[str] = ""
-    dependencies: List[
+    name: Optional[str]
+    msg: Optional[str]
+    dependencies: Optional[List[
         Union[int, TasqueExternalStateDependency]
-    ] = []
-    groups: Optional[List[Union[str, TasqueExternalAcquisition]]] = ["default"]
+    ]]
+    groups: Optional[List[Union[str, TasqueExternalAcquisition]]]
     retry: Optional[TasqueRetry] = TasqueRetry()
-    env: Optional[Dict[str, str]] = {}
-    log: Optional[str] = None
-    result: Optional[Any] = None
-    status: Optional[str] = None
-    status_data: Optional[Dict[str, Any]] = None
+    env: Optional[Dict[str, str]]
+    log: Optional[str]
+    result: Optional[Any]
+    status: Optional[str]
+    status_data: Optional[Dict[str, Any]]
 
 class TasqueSubprocessTask(TasqueBaseTask):
     type: str = Field("subprocess", const=True)
-    cwd: str = "."
-    cmd: str = "echo"
+    cwd: Optional[str]
+    cmd: Optional[str]
     options: Optional[
         List[
             Union[
@@ -79,24 +79,24 @@ class TasqueSubprocessTask(TasqueBaseTask):
                 ],
             ]
         ]
-    ] = []
-    evaled_cmd: Optional[List[str]] = None
-    evaled_cmdline: Optional[str] = None
-    evaled_options: Optional[List[Any]] = None
+    ]
+    evaled_cmd: Optional[List[str]]
+    evaled_cmdline: Optional[str]
+    evaled_options: Optional[List[Any]]
 
 class TasqueShellTask(TasqueBaseTask):
     type: str = Field("sh", const=True)
-    cwd: str = "."
-    shell: str = "sh"
-    script: str = "echo"
-    evaled_script: Optional[str] = None
+    cwd: Optional[str]
+    shell: Optional[str]
+    script: Optional[str]
+    evaled_script: Optional[str]
 
 class TasqueFunctionTask(TasqueBaseTask):
     type: str = Field("function", const=True)
-    func: str
+    func: Optional[str]
     args: Optional[
         List[Union[str, TasqueTaskListArgument, TasqueTaskFstrArgument, TasqueTaskArgument]]
-    ] = []
+    ]
     kwargs: Optional[
         List[
             Union[
@@ -104,14 +104,14 @@ class TasqueFunctionTask(TasqueBaseTask):
                 Dict[str, Union[str, TasqueTaskFstrArgument, TasqueTaskArgument]],
             ]
         ]
-    ] = []
-    evaled_args: Optional[List[Any]] = None
-    evaled_kwargs: Optional[Dict[str, Any]] = None
+    ]
+    evaled_args: Optional[List[Any]]
+    evaled_kwargs: Optional[Dict[str, Any]]
 
 class TasqueSpecification(BaseModel):
-    name: Optional[str] = "default"
-    global_params: Optional[Dict[str, Any]] = {}
-    global_env: Optional[Dict[str, str]] = {}
-    root_dir: Optional[str] = os.environ.get("APP_SRC_DIR", ".")
-    groups: Optional[Dict[str, int]] = {}
-    tasks: Optional[Dict[int, Union[TasqueSubprocessTask, TasqueShellTask, TasqueFunctionTask]]] = {}
+    name: Optional[str]
+    global_params: Optional[Dict[str, Any]]
+    global_env: Optional[Dict[str, str]]
+    root_dir: Optional[str]
+    groups: Optional[Dict[str, int]]
+    tasks: Optional[Dict[int, Union[TasqueSubprocessTask, TasqueShellTask, TasqueFunctionTask]]]
